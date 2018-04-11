@@ -6,4 +6,6 @@ To install `dynamac` in R, you can use the `devtools` package:
 ```
 library(devtools)
 devtools::install_github("andyphilips/dynamac")
+library(dynamac)
 ```
+You should now be able to use the package. A CRAN repositiory will be added soon.
