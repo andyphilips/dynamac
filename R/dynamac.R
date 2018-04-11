@@ -1,0 +1,2896 @@
+# Package: dynamac
+# Title: Dynamic simulation and testing for single-equation ARDL models
+# version 0.1.3.9000
+# 04/10/2018
+# Authors: Soren Jordan, Andrew Q. Philips
+#
+## Dependencies: 	MASS (for multivariate normal draws)
+#					lmtest (for autocorrelation tests)
+#
+## Functions included:
+# (1) lshift()
+#	x = [no default]						vector to lag
+#	l = [no default]						number of lags
+#
+# (2) dshift()
+#	x = [no default]						vector to difference
+#
+# (3) ldshift()
+#	x = [no default]						vector to lag difference
+# 	l = [no default]						number of lagged differences
+#
+# (4) dynardl()
+#	formula = [no default]				model formula
+#	data = [list()]						list of variables
+#	lags = [list()]						list of lags, like lags = list("x" = c(1,2) ...)
+# 	diffs = [list()]						list of diffs, like diffs = list("x" = c(1) ...)
+#	lagdiffs = [list()]					list of variables to lagdiff, like lagdiffs = list("x" = c(1) ...)
+# 	levels = [list()]					vector of variables in levels, like c("x", "z" ...)
+#	ec = [FALSE] 						should model be error correcting? (i.e. differenced y or not)
+#	range = [20] 						range of simulation
+#	sig = [95] 							significance for simulations
+#	time = [10]							time to shock variable
+#	shockvar = [list()]					variable to be shocked, like "x"
+#	shockval = [sd(data[[shockvar]])]	amount to shock variable
+#	sims = [1000]						number of simulations to run
+#	forceset = [NULL]					list of variables to be forced to a certain value 
+#	burnin = [20]						number of time periods to throw away before beginning reported simulation
+#	expectedval = [FALSE]				expected value of simulation (averaged errors) or predicted value 
+#	trend = [FALSE]						include a linear trend 
+#	constant = [TRUE]					include a constant
+#	graph = [FALSE]						graph the results
+#	rarea = [TRUE]						if graphed, area graph or spike graph?
+#	modelout = [FALSE]					print model summary	
+#	simulate = [TRUE]					simulate model, or just estimate?
+#
+# (5) area.simulation.graph()
+#	x = [no default] 					dynardl() object containing a simulation and parameters
+#
+# (6) spike.simulation.graph()
+#	x = [no default] 					dynardl() object containing a simulation and parameters
+#
+# (7) pssbounds()
+#	data = [list()]						a dynardl model object
+#	obs = [NULL]						the number of observations in the model time series
+#	fstat = [NULL]						the f statistic on the joint first lags of variables
+#	tstat = [NULL]						t statistic on LDV in EC model
+#	case = [NULL]						case of regression: see documentation
+#	k = [NULL]							number of k regressors in first lags
+#	digits = 3							digits to report of statistics
+#	object.out = [FALSE]					do you want to print all of this into an object?
+#
+# (8) dynardl.auto.correlated()
+#	x = [no default]						a dynardl model object
+#	bg.type = ["Chisq"]		 			character string of Chisq or F for the type of bg test used
+#	digits = [3]						where to round AIC/BIC
+#	order = [NULL]						the order of autocorrelation to test in bgtest
+#	object.out = [FALSE]				do you want to print all of this into an object?
+
+
+library(MASS) 
+library(lmtest)
+
+##########################################
+# ------------(1) lshift ----------------#
+##########################################
+#' Take lag transformation of a series
+#' @param x a series to be lagged
+#' @param l the number of lags
+#' @return the lagged series
+#' @details
+#' \code{lshift} assumes that the series are ordered, that there is no missing
+#' data, and that the time intervals are even.
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords utilities
+#' @examples
+#' lshift(rnorm(20), l = 1)
+lshift <- function(x, l){
+	stopifnot(is.numeric(l))
+	stopifnot(is.numeric(x))
+	out <- c(rep(NA,l), head(x,-l))
+	out
+}
+
+##########################################
+# ------------(2) dshift ----------------#
+##########################################
+#' Take first-difference transformation of a series
+#' @param x the series to be first-differenced
+#' @return the first-differenced series
+#' @details
+#' \code{dshift} assumes that the series are ordered, that there is no missing
+#' data, and that the time intervals are even.
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords utilities
+#' @examples
+#' dshift(rnorm(20))
+dshift <- function(x){
+	stopifnot(is.numeric(x))
+	out <- c(NA, diff(x))
+	out
+}
+
+##########################################
+# ------------(3) ldshift ----------------#
+##########################################
+#' Take lagged first-difference transformation of a series
+#' @param x the series to be first-differenced and then lagged
+#' @param l the number of lags
+#' @return the lagged first-differenced series
+#' @details
+#' \code{ldshift} assumes that the series are ordered, that there is no missing
+#' data, and that the time intervals are even.
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords utilities
+#' @examples
+#' ldshift(rnorm(20), l = 1)
+ldshift <- function(x, l){
+	stopifnot(is.numeric(l))
+	stopifnot(is.numeric(x))
+	out <- c(rep(NA,l), head(c(NA,diff(x)),-l))
+	out
+}
+
+#########################################
+# ------------(4) dynardl ---------------#
+##########################################
+#' Estimate and Simulate ARDL Model
+#' @description
+#' Estimate autoregressive distributed lag model, simulate interesting values,
+#' and plot predictions
+#' @param data an optional data frame or list containing the the variables in
+#' the model.
+#' @param lags a list of variables and their corresponding lags to be
+#' estimated.
+#' @param diffs a list of variables and their corresponding difference to be
+#' differenced. Only first differences are supported.
+#' @param lagdiffs a list of variables to be included in lagged differences.
+#' @param levels a list of variables to be included in levels.
+#' @param ec estimate model in error-correction form, (i.e., \code{y} appears
+#' in first-differences). By default, \code{ec} is set to \code{FALSE},
+#' meaning \code{y} will appear in levels. 
+#' @param range the range of the simulation to be conducted
+#' @param sig the significance level (1 - \code{p}) that the user wants for
+#' the simulations. The default level is 95\% significance (\code{sig = 95}).
+#' @param time the time period in the simulation for the variable to be
+#' shocked.
+#' @param shockvar the variable to be shocked. There is no default.
+#' @param shockval the amount by which the \code{shockvar} should be shocked.
+#' The default is one standard deviation of the shocked variable.
+#' @param sims the number of simulations to use in creating the quantities of
+#' interest.
+#' @param forceset by default, in the simulations, variables in levels will be
+#' set to their means; variables in differences will be set to 0.
+#' Alternatively, users can set any variable in the model to a different value
+#' using a list in \code{forceset}.
+#' @param burnin the number of time periods to disregard before recording the
+#' values. These do not include the \code{range}; in other words, they take
+#' place before the \code{range} specified above. Users can increase the
+#' number of \code{burnin} periods, but probably should not decrease them.
+#' @param expectedval if this is \code{TRUE}, the simulation will record the
+#' expected values of across the \code{sims} by averaging errors. We recommend
+#' setting it to \code{FALSE}, since expected values do not account for
+#' stochastic error present in the model itself.
+#' @param trend include a linear time trend
+#' @param constant include a constant
+#' @param graph create a plot of the sumulated response
+#' @param rarea if \code{graph = TRUE}, create an area plot. If \code{graph =
+#' TRUE} and \code{rarea = FALSE}, a spike plot will be created.
+#' @param modelout print the regression estimates in the console
+#' @param simulate simulate the reponse. Otherwise, just the regression model
+#' will be estimated.
+#' @return \code{dynardl} should always return an estimated model. It may or
+#' may not be simulated, according to the user. But the relevant regression
+#' output, model residuals (which can be tested for autocorrelation), and
+#' simulated response (if created) are stored in a list if the model is
+#' assigned to an object.
+#' @details
+#' Estimate an auto-regressive distributed lag model. Moreover, provide a
+#' graphical interpretation of the results by simulating the response of 
+#' the dependent variable to shocks in one of the weakly exogenous regressors.
+#' @param formula a symbolic description of the model to be estimated. ARDL
+#' models are estimated using linear regression.
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords simulation estimation ardl
+dynardl <- function(formula,
+								data = list(),
+								lags = list(),
+								diffs = list(),
+								lagdiffs = list(),
+								levels = list(),
+								ec = FALSE,
+								range = 20,
+								sig = 95,
+								time = 10,
+								shockvar = list(),
+								shockval = sd(data[[shockvar]]),
+								sims = 1000,
+								forceset = NULL,
+								burnin = 20,
+								expectedval = FALSE,
+								trend = FALSE,
+								constant = TRUE,
+								graph = FALSE,
+								rarea = TRUE,
+								modelout = FALSE,
+								simulate = TRUE) {
+	#################
+	# Data controls #
+	#################
+	# If data not passed, create data frame
+	if(identical(data, list())) {
+		temp.data.mat <- NULL
+		for(i in 1:length(all.vars(formula))) {
+			assign(paste(all.vars(formula)[i]), get(all.vars(formula)[i]))
+			temp.data.mat <- cbind(temp.data.mat, get(all.vars(formula)[i]))
+		}
+		colnames(temp.data.mat) <- all.vars(formula)
+		data <- data.frame(temp.data.mat)
+	}	
+	#######################
+	# Difference controls #
+	#######################
+	if(length(diffs)) {
+		if(!is.list(diffs)) {	# Stop for non-list diffs
+			stop("'diffs' must be a list")
+		}
+		else {
+			for(i in 1:length(diffs)) {
+				if(!(is.numeric(diffs[[i]]))) { # Stop for diffs without diff level
+					stop("Declare differences with numeric list: diffs = list(\"X\" = c(1))")
+				}
+				else {			
+					for(j in 1:diffs[[i]]) {
+						if(diffs[[i]][j] > 1) {	# Stop for second or more diffs
+							stop("Second differences ('diffs' > 1) not supported")
+						}
+					}
+					# Warn if variables aren't in formula
+					if(!(names(diffs)[i] %in% all.vars(formula))) {
+							warning(paste(paste("Variable"), paste(names(diffs)[i]), paste("in the diffs list not found in model formula. Not included in differences."), sep = " "))
+					}
+				}
+			}
+		}
+	}
+	################
+	# Lag controls #
+	################
+	if(length(lags)) {
+		if (!is.list(lags)) {
+			stop("'lags' must be a list")
+		}
+		else {
+			if(as.character(formula[[2]]) %in% names(lags)) { # Stop for first lag of LDV not in lags
+				first.lag.ldv <- FALSE
+				for(i in 1:length(names(lags))) {
+					if(names(lags)[i] == as.character(formula[[2]])) {
+						for(o in 1:length(names(lags))[i]) {
+							# For the lags of LDV, if it includes the first, we're good
+							ifelse(lags[[i]][o] == 1, first.lag.ldv <- TRUE, first.lag.ldv <- first.lag.ldv)
+						}
+					}
+				}
+				if(first.lag.ldv == FALSE) {
+					stop("'lags' must include first lag of dependent variable (LDV)")	
+				}
+			}
+			# Warn if variables aren't in formula
+			for(i in 1:length(names(lags))) {
+				if(!(names(lags)[i] %in% all.vars(formula))) {
+					warning(paste(paste("Variable"), paste(names(lags)[i]), paste("in the lags list not found in model formula. Not included in lagged levels."), sep = " "))
+				}
+			}
+		}
+	}
+	##############################
+	# Lagged difference controls #
+	##############################			
+	if(length(lagdiffs)){
+		if(!is.list(lagdiffs)) {
+			stop("'lagdiffs' must be a list")
+		}
+		else {
+			# Warn if variables aren't in formula
+			for(i in 1:length(names(lagdiffs))) {
+				if(!(names(lagdiffs)[i] %in% all.vars(formula))) {
+					warning(paste(paste("Variable"), paste(names(lagdiffs)[i]), paste("in the lagdiffs list not found in model formula. Not included in lagged differences."), sep = " "))
+				}
+			}
+		}
+	}
+	###################
+	# Levels controls #
+	###################
+	if(length(levels)){
+		# Warn if variables aren't in formula
+		for(i in 1:length(levels)) {
+			if(!(levels[i] %in% all.vars(formula))) {
+				warning(paste(paste("Variable"), paste(levels[i]), paste("in the levels list not found in model formula. Not included in levels."), sep = " "))
+			}
+		}
+	}
+	#####################
+	# Forceset controls #
+	#####################	
+	if(length(forceset)){
+		if(as.character(formula[[2]]) %in% names(forceset)) {
+			stop("LDV cannot be forceset in dynamic simulation.")
+		}
+		else {
+			# Warn if variables aren't in formula
+			for(i in 1:length(names(forceset))) {
+				if(!(names(forceset)[i] %in% all.vars(formula))) {
+					warning(paste(paste("Variable"), paste(names(forceset)[i]), paste("in the forceset list not found in model formula. Variable not forced."), sep = " "))
+				}
+			}
+		}
+	}
+	#######################
+	# Simulation controls #
+	#######################
+	if(simulate == TRUE) {
+		#####################
+		# Shockvar controls #
+		#####################
+		if(length(shockvar) == 0) {
+			stop("'shockvar' must be specified for a dynamic simulation")
+		} 
+		else {
+			if (length(shockvar) > 1) {
+				stop("Only specify one shockvar in a dynamic simulation")
+			} 
+			else {
+				if(!(shockvar %in% all.vars(formula))) { # If it's not in the formula, that's a problem
+					stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found in model formula. Shock variable required for dynamic simulation."), sep = " "))
+				}
+				else { # If it's not estimated, that's another problem
+					if(!(shockvar %in% names(diffs))) { #if its not in diffs
+						if(!(shockvar %in% names(lagdiffs))) {
+							if(!(shockvar %in% levels)) {
+								if(!(shockvar %in% names(lags))) {
+									stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found lags, lagdiffs, levels, or differences. Shock variable required for dynamic simulation."), sep = " "))
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		#####################
+		# Forceset controls #
+		#####################	
+		if(length(forceset)) {
+			if(as.character(formula[[2]]) %in% names(forceset)) {
+				stop("LDV cannot be forceset in dynamic simulation.")
+			}
+			else {
+				# Warn if variables aren't in formula
+				for(i in 1:length(names(forceset))) {
+					if(!(names(forceset)[i] %in% all.vars(formula))) {
+						warning(paste(paste("Variable"), paste(names(forceset)[i]), paste("in the forceset list not found in model formula. Variable not forced."), sep = " "))
+					}
+				}
+			}
+		}
+		if(time >= range) {
+			stop("The range of simulation must be longer than shock time.")
+		}
+	}
+	##################
+	# Final warnings #
+	##################	
+	# Warn the opposite: in formula but not in estimation
+	for(i in 2:length(all.vars(formula))) { # for all x variables
+		if(!(all.vars(formula)[i] %in% names(diffs))) { #if its not in diffs
+			if(!(all.vars(formula)[i] %in% names(lagdiffs))) {
+				if(!(all.vars(formula)[i] %in% levels)) {
+					if(!(all.vars(formula)[i] %in% names(lags))) {
+						warning(paste(paste("Variable"), paste(all.vars(formula)[i]), paste("in the formula list not found lags, lagdiffs, levels, or differences. Variable ignored."), sep = " "))
+					}
+				}
+			}
+		}
+	}
+	###############
+	# Create data #
+	###############		
+	# For X/Y: initialize list of DVs/IVs
+	dv <- dvnamelist <- NULL
+	ldvs <- lnumdvs <- ldvnamelist <- ldvset <- NULL # Initialize LDVs and number of lags
+	lddvs <- ldnumdvs <- lddvnamelist <- lddvset <- NULL # Initialize LDDVs and number of lags
+	dsiv <- lnumdsiv <- dsivnamelist <- dsivset <- NULL # Initialize shocked differenced IVs
+	livs <- lnumivs <- livsnamelist <- livsset <- NULL # Ititialize lag IVs and number of lags
+	lsiv <- lnumsiv <- lsivnamelist <- lsivset <- NULL # Initialize shocked lag IVs and number
+	divs <- lnumdivs <- divnamelist <- divset <- NULL # Initialize differenced IVs
+	ldsiv <- lnumldsiv <- ldsivnamelist <- ldsivset <- NULL # Initialize lag difference shocked IVs
+	ldivs <- lnumldivs <- ldivsnamelist <- ldivsset <- NULL # Initialize lag differenced IVs
+	siv <- sivnamelist <- sivset <- NULL # Initialize levels shocked IVs
+	ivs <- ivsnamelist <- ivsset <- NULL # Initilialzie levels IVs
+	trendvar <- nocons <- trendset <- NULL
+	ec.message <- constant.message <- trend.message <- NULL
+	if(ec == "TRUE") { 	# For Y: if error correction, we need differenced y
+		# formula[[2]] is y
+		ec.message <- "Error correction (EC) specified; dependent variable to be run in differences."
+		dv <- as.data.frame(dshift(as.matrix(data[[as.character(formula[[2]])]]))) # place d.y in dataframe
+		colnames(dv) <- dvnamelist <- paste("d", as.character(formula[[2]]), sep = ".") # name of Y
+		assign(paste(dvnamelist), as.matrix(dv))
+	} 
+	else { 	# If just LDV model
+		ec.message <- "Dependent variable to be run in levels."
+		dv <- as.data.frame(as.matrix(data[as.character(formula[[2]])])) # place y in dataframe
+		colnames(dv) <- dvnamelist <- as.character(formula[[2]])
+		assign(paste(dvnamelist), as.matrix(dv))
+	}
+	# Lags
+	if (length(lags)) {
+		if(!(as.character(formula[[2]]) %in% names(lags))) { # If LDV not in lag
+			lnumdvs <- 1 # we'll default to one lag
+			warning("Lagged dependent variable added to model formula.")
+			ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+			v.name <- paste("l", 1, as.character(formula[[2]]), sep = ".")
+			ldvnamelist <- c(ldvnamelist, v.name)
+			assign(paste(v.name), lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+			if(constant == TRUE) { # If there is an intercept, use the mean
+				ldvset <- c(ldvset, mean(as.matrix(data[as.character(formula[[2]])])))
+			} 
+			else { # If not, set to 0
+				ldvset <- c(ldvset, 0)
+			}
+		} # For all other lags
+		for(i in 1:length(lags)) { # loop thru list
+			if(names(lags)[[i]] == as.character(formula[[2]])) { # If it's y/LDV
+				lnumdvs <- lags[[i]] # Get the lag numbers (only one y/LDV)
+				for(o in 1:length(lags[[i]])) { # Loop thru obs in list
+					ldvs <- cbind(ldvs, lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))
+					v.name <- paste("l", lags[[i]][o], names(lags[i]), sep = ".")
+					ldvnamelist <- cbind(ldvnamelist, v.name)
+					assign(paste(v.name), lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))	
+					if(constant == TRUE) { # If there is an intercept, use the mean
+						ldvset <- c(ldvset, mean(as.matrix(data[as.character(formula[[2]])])))
+					} 
+					else { # If not, set to 0
+						ldvset <- c(ldvset, 0)
+					}
+				}
+			} 
+			else { # If it's an IV (not Y)
+				if(names(lags)[[i]] %in% shockvar) { # If it's a shockvar
+					lnumsiv <- lags[[i]]  # Get the lag numbers (only one shockvar)
+					for(o in 1:length(lags[[i]])) { # Loop thru obs in list
+						lsiv <- cbind(lsiv, lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))
+						v.name <- paste("l", lags[[i]][o], names(lags[i]), sep = ".")
+						lsivnamelist <- cbind(lsivnamelist, v.name)
+						assign(paste(v.name), lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))
+						if(names(lags)[i] %in% names(forceset)) {
+							# If the variable is in forceset, grab its value
+							lsivset <- c(lsivset, forceset[[names(lags)[i] == names(forceset)]])	
+						} 
+						else {
+							# If not, we use the mean
+							lsivset <- c(lsivset, mean(data[[names(lags[i])]]))				
+						}
+					}
+				} 
+				else { # If it's not a shockvar
+					lnumivs <- c(lnumivs, lags[[i]]) # Get the lag numbers
+					for(o in 1:length(lags[[i]])) { # Loop thru obs in list
+						livs <- cbind(livs, lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))
+						v.name <- paste("l", lags[[i]][o], names(lags[i]), sep = ".")
+						livsnamelist <- cbind(livsnamelist, v.name)
+						assign(paste(v.name), lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))
+						if(names(lags)[i] %in% names(forceset)) {
+							# If the variable is in forceset, grab its value
+							livsset <- c(livsset, forceset[[names(lags)[i] == names(forceset)]])	
+						} 
+						else {
+							# If not, we use the mean
+							livsset <- c(livsset, mean(data[[names(lags[i])]]))				
+						}
+					}
+				}
+			}
+		}
+	} 	
+	else { # Even if no lag specified, LDV required
+		lnumdvs <- 1		# Default to one lag
+		warning("Lagged dependent variable added to model formula.")
+		ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+		v.name <- paste("l", 1, as.character(formula[[2]]), sep = ".")
+		ldvnamelist <- c(ldvnamelist, v.name)
+		assign(paste(v.name), lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+		if(constant == TRUE) { # If there is an intercept, use the mean
+			ldvset <- c(ldvset, mean(as.matrix(data[as.character(formula[[2]])])))
+		} 
+		else { # If not, set to 0
+			ldvset <- c(ldvset, 0)
+		}
+	} 
+	# Differences. Will be less complicated because of LDV issue and only first differences supported
+	if (length(diffs)) {
+		for(i in 1:length(diffs)){ # loop thru list
+			if(names(diffs)[[i]] %in% shockvar) { # If it's a shockvar
+				dsiv <- cbind(dsiv, dshift(as.matrix(data[[names(diffs[i])]]))) # > D.1 not supported
+				v.name <- paste("d", diffs[i], names(diffs[i]), sep = ".")
+				dsivnamelist <- c(dsivnamelist, v.name)
+				assign(paste(v.name), dshift(as.matrix(data[[names(diffs[i])]])))
+				#if(names(diffs)[i] %in% names(forceset)) {
+				#	# If the variable is in forceset, grab its value
+				#	dsivset <- c(dsivset, forceset[[names(diffs)[i] == names(forceset)]])
+				#} else {
+				#	# If not, we set it to 0
+				dsivset <- c(dsivset, 0)	
+			}
+			else { # for non-shock vars
+				divs <- cbind(divs, dshift(as.matrix(data[[names(diffs[i])]]))) # > D.1 not supported
+				v.name <- paste("d", diffs[i], names(diffs[i]), sep = ".")
+				divnamelist <- c(divnamelist, v.name)
+				assign(paste(v.name), dshift(as.matrix(data[[names(diffs[i])]])))
+				#if(names(diffs)[i] %in% names(forceset)) {
+				#	# If the variable is in forceset, grab its value
+				#	divset <- c(divset, forceset[[names(diffs)[i] == names(forceset)]])
+				#} else {
+				#	# If not, we set it to 0
+				divset <- c(divset, 0)		
+			}
+		}
+	}		
+	# Lagged differences
+	if (length(lagdiffs)){
+		for(i in 1:length(lagdiffs)) { # loop thru list
+			if(names(lagdiffs)[[i]] == as.character(formula[[2]])) { # If it's y/LDV
+				ldnumdvs <- lagdiffs[[i]] # Get the lag numbers (only one DV)
+				for(o in 1:length(lagdiffs[[i]])) { # Loop thru obs in list
+					lddvs <- cbind(lddvs, ldshift(as.matrix(data[[names(lagdiffs[i])]]), l = lagdiffs[[i]][o]))
+					v.name <- paste("ld", lagdiffs[[i]][o], names(lagdiffs[i]), sep = ".")
+					lddvnamelist <- cbind(lddvnamelist, v.name)
+					assign(paste(v.name), ldshift(as.matrix(data[[names(lagdiffs[i])]]), l = lagdiffs[[i]][o]))
+					# Set list to 0, LDV cannot be in forcelist
+					lddvset <- c(lddvset, 0)
+				}
+			} 
+			else { # If it's an IV (not form of Y)
+				if(names(lagdiffs)[[i]] %in% shockvar) { # If it's a shockvar
+					lnumldsiv <- lagdiffs[[i]] # Get the lag numbers (only one shockvar)
+					for(o in 1:length(lagdiffs[[i]])){ # loop thru obs in list
+						ldsiv <- cbind(ldsiv, ldshift(as.matrix(data[[names(lagdiffs[i])]]), l = lagdiffs[[i]][o]))
+						v.name <- paste("ld", lagdiffs[[i]][o], names(lagdiffs[i]), sep = ".")
+						ldsivnamelist <- c(ldsivnamelist, v.name)
+						assign(paste(v.name), ldshift(as.matrix(data[[names(lagdiffs[i])]]), l = lagdiffs[[i]][o]))
+						#if(names(lagdiffs)[i] %in% names(forceset)) {
+						#	# If the variable is in forceset, grab its value
+						#	ldsivset <- c(ldsivset, forceset[[names(lagdiffs)[i] == names(forceset)]])
+						#} else {
+						#	# If not, we set it to 0
+						ldsivset <- c(ldsivset, 0)	
+					}							
+				} 
+				else { # non shock-vars
+					lnumldivs <- c(lnumldivs, lagdiffs[[i]])
+					for(o in 1:length(lagdiffs[[i]])){ # loop thru obs in list
+						ldivs <- cbind(ldivs, ldshift(as.matrix(data[[names(lagdiffs[i])]]), l = lagdiffs[[i]][o]))
+						v.name <- paste("ld", lagdiffs[[i]][o], names(lagdiffs[i]), sep = ".")
+						ldivsnamelist <- c(ldivsnamelist, v.name)
+						assign(paste(v.name), ldshift(as.matrix(data[[names(lagdiffs[i])]]), l = lagdiffs[[i]][o]))
+						#if(names(lagdiffs)[i] %in% names(forceset)) {
+						#	# If the variable is in forceset, grab its value
+						#	ldivsset <- c(ldivsset, forceset[[names(lagdiffs)[i] == names(forceset)]])
+						#} else {
+						#	# If not, we set it to 0
+						ldivsset <- c(ldivsset, 0)		
+					}
+				}
+			}
+		}
+	}
+	# Levels
+	if (length(levels)){
+		for(i in 1:length(levels)){
+			if(levels[i] %in% shockvar) { # If it's a shockvar
+				siv <- cbind(siv, as.matrix(data[levels[[i]]])) 
+				v.name <- levels[i]
+				sivnamelist <- c(sivnamelist, v.name)
+				assign(paste(v.name), as.matrix(data[levels[[i]]]))
+				if(levels[i] %in% names(forceset)) {
+					sivset <- c(sivset, forceset[[levels[i] == names(forceset)]])
+				} 
+				else {
+					# If not, we use the mean
+					sivset <- c(sivset, mean(as.matrix(data[levels[[i]]])))
+				}
+			} 
+			else {
+				ivs <- cbind(ivs, as.matrix(data[levels[[i]]]))
+				v.name <- levels[i]
+				ivsnamelist <- c(ivsnamelist, v.name)
+				assign(paste(v.name), as.matrix(data[levels[[i]]]))
+				if(levels[i] %in% names(forceset)) {
+					ivsset <- c(ivsset, forceset[[levels[i] == names(forceset)]])
+				} 
+				else {
+					# If not, we use the mean
+					ivsset <- c(ivsset, mean(as.matrix(data[levels[[i]]])))
+				}
+			}
+		}
+	}	
+	# Trend/constant
+	if(trend == TRUE) {
+		trendvar <- seq(1, length(dv[,1]), 1)
+		trendset <- -burnin
+		trend.message <- "Deterministic linear trend added to model formula."
+	} 
+	if(constant == FALSE) {
+		cosntant.message <- "Constant suppressed from model formula."
+	}	
+	
+	# Independent variables, their names, and the setlist of values for simulations we created
+	#  Order is important here!
+	IVs <- as.data.frame(cbind(ldvs, lddvs, dsiv, lsiv, ldsiv, siv, ivs, divs, livs, ldivs))
+	colnames(IVs) <- c(ldvnamelist, lddvnamelist, dsivnamelist, lsivnamelist, ldsivnamelist, 
+		sivnamelist, ivsnamelist, divnamelist, livsnamelist, ldivsnamelist)
+	set <- setlist <- c(ldvset, lddvset, dsivset, lsivset, ldsivset, sivset, ivsset, 
+		divset, livsset, ldivsset, trendset)
+
+	# If there's a constant, add this back to the setlist, too
+	if(constant == TRUE) {
+		set <- setlist <- c(1, setlist)
+	}
+	##################
+	# Estimate model #
+	##################	
+	if(trend == TRUE) {
+		IVs <- data.frame(IVs, trendvar)
+		colnames(IVs) <- c(ldvnamelist, lddvnamelist, dsivnamelist, lsivnamelist, ldsivnamelist, 
+			sivnamelist, ivsnamelist, divnamelist, livsnamelist, ldivsnamelist, "trendvar")
+		if(constant == FALSE) {
+			res <- lm(as.formula(paste(paste(dvnamelist), "~", paste(colnames(IVs), collapse = "+"), "- 1", collapse = " ")))
+		} 
+		else {
+			res <- lm(as.formula(paste(paste(dvnamelist), "~", paste(colnames(IVs), collapse = "+"), collapse = " ")))
+		}
+	} 
+	else {
+		if(constant == FALSE) {
+			res <- lm(as.formula(paste(paste(dvnamelist), "~", paste(colnames(IVs), collapse = "+"), "- 1", collapse = " ")))
+		} 
+		else {
+			res <- lm(as.formula(paste(paste(dvnamelist), "~", paste(colnames(IVs), collapse = "+"), collapse = " ")))
+		}
+	}
+	if(modelout == TRUE) {
+		print(summary(res))
+	}
+	
+	# Add EC status to res object to help with pssbounds
+	res$EC <- ec
+	res$simulate <- simulate
+	
+	# Warning about lags in EC model
+	if(ec == TRUE) {
+		if(max(lnumdvs, lnumsiv, lnumivs) > 1) {
+			warning("Multiple lags included in implied co-integrated relationship: are you sure you want this?")
+		}
+	}
+	
+	# Print any messages
+	print(ec.message)
+	if(!(identical(NULL, trend.message))) {print(trend.message)}
+	if(!(identical(NULL, constant.message))) {print(constant.message)}
+	
+	# Quantities of interest
+	B <- coef(res) # get betas
+	V <- vcov(res) # get vcov matrix
+	sigma2 <- sigma(res)^2
+	dfsig <- res$df.residual
+	len <- res$rank
+	
+	#############
+	# pssbounds #
+	#############			
+	case <- tstat <- fstat <- obs <- k <- NULL
+	# Only possible if EC
+	if(ec == TRUE) {
+		if(trend == TRUE) {
+			if(constant == FALSE) {
+				case <- 0
+			}
+			else {
+				case <- 5
+			}
+		}
+		else {
+			if(constant == FALSE) {
+				case <- 1
+			}
+			else {
+				case <- 3
+			}
+		}
+		tstat <- coef(summary(res))[paste(ldvnamelist),3] # t stat on LDV
+		obs <- length(res$residuals) # number of observations in model
+		# Isolate variables in model in first lags
+		R.temp <- rep(NA, length(coef(res)))
+		for(i in 1:length(R.temp)) {
+			# If that variable is a first lag, it's in the restriction set. 0 if not
+			ifelse(grepl("l.1.", names(coef(res))[i]) == TRUE, R.temp[i] <- 1, R.temp[i] <- 0)
+		}
+		k <- sum(R.temp)
+		# This needs to be expanded so that each hypothesis gets its own row
+		R <- matrix(rep(0, length(coef(res))*k), nrow = k)
+		the.row <- 1
+		for(i in 1:length(R.temp)){
+			if(R.temp[i] == 1) { # If that model coefficient is a first lag
+				R[the.row, i] <- 1	# Then that row gets a 1 where the coefficient is
+				the.row <- the.row + 1
+			}			
+		}
+		# Restriction is always that it's equal to 0
+		q <- 0
+		fstat <- (1/k)*t(R%*%B-q)%*%solve(R%*%V%*%t(R))%*%(R%*%B-q)	
+		pssbounds <- data.frame(obs, k, tstat, fstat, case)
+		names(pssbounds) <- c("obs", "k", "tstat", "fstat", "case")
+	}
+	
+	###############
+	# Simulations #
+	###############		
+	if(simulate == TRUE) {	
+		# Set parameters
+		sigl <- ((100-sig)/2)/100
+		sigu <- (100-((100-sig)/2))/100
+		brange <- range + burnin
+		btime <- time + burnin
+	
+		# Vectors for predicted values and significance
+		meanpv <- rep(NA, brange)
+		# For significance: if the user sets a value of either 75, 90, or 95, we proceed as normal
+		if(sig %in% c(75, 90, 95)) {
+			PV_pctile <- matrix(rep(NA, brange*6), ncol = 6)
+			colnames(PV_pctile) <- c("ll95", "ll90", "ll75", "ul75", "ul90", "ul95")
+		}
+		# If not, we add two columns on the outside to be custom user values
+		else {
+			PV_pctile <- matrix(rep(NA, brange*8), ncol = 8)
+			colnames(PV_pctile) <- c("ll95", "ll90", "ll75", "ul75", "ul90", "ul95", "ll", "ul")
+		}
+		
+		##################################
+		# Values at t = 1 (first burnin) #
+		##################################
+		# Draw from a multivariate normal, place in PB
+		PB <- mvrnorm(n = sims, mu = B, Sigma = V)
+		# Replicating Stata: Sigma2 is going to be sigma2*the degrees of freedom divided by random chisq draws
+		# This has length of the number of sims 
+		Sigma2 <- (sigma2*dfsig)/(rchisq(sims, dfsig))
+		
+		# now multiply [sims x k] posterior beta matrix by [k x 1] set matrix
+		PV <- PB%*%set
+		
+		# Expected values get error
+		if(expectedval == "TRUE") {
+			for(i in 1:sims) { # For each PB, of which there are sims
+				PV.error <- PV[i] + rnorm(1000, 0, sqrt(Sigma2[i])) # Replace it with avg of 1000 errors with a variance of the ith Sigma
+				PV[i] <- mean(PV.error)
+			}
+		} 
+		else {
+			PV <- PV + rnorm(sims, 0, sqrt(Sigma2))
+		}
+				
+		# Quantities depend on user values
+		if(sig %in% c(75, 90, 95)) {
+			# Get the percentiles of the predicted values (all needed for graph)
+			PV_pctile[1,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975))
+		} 
+		else {
+			PV_pctile[1,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu))
+		}
+		
+		# If ECM, predicted change is added on to sample mean of Y: first/second element of forcesetlist (first is constant)
+		if(ec == "TRUE") {
+			if(constant == FALSE) { # Set this because it changes where LDV is
+				meanpv[1] <- mean(PV) + set[1] 
+			} 
+			else {
+				meanpv[1] <- mean(PV) + set[2] 
+			}
+		} 
+		else { 	# If just LDV model, it's just the new predicted change
+			meanpv[1] <- mean(PV)
+		}			
+
+		###########################
+		# Values at t = 2 - range #
+		###########################		
+		# Progress bar to monitor dynardl
+		print("dynardl estimating ...") 
+		flush.console()
+		pb <- txtProgressBar(min = 0, max = brange, style = 3)
+		for(p in 2:brange) {
+			Sys.sleep(0.1)
+			row <- 1			# To work through setlist
+			if(constant == TRUE) {
+				row <- row + 1	# Increment past constant
+			}
+			
+			##### LDVs (MUST HAVE) (these don't depend on shocktime)
+			for(lag in 1:length(lnumdvs)) {		# For each lag in the LDVs 
+				w <- p - lnumdvs[lag	]			# w is the time period minus the appropriate lag of the LDV
+				if(w > 0) {	# If LDV exists, meaning we've gone forward enough in time
+					set[row] <- meanpv[w] 	# For that lag of LDV, give it the corresponding PV
+				}	# Else: keep the set where it is, meaning don't replace the lag
+				row <- row + 1					# Move down the setlist (i.e. to the next lag of LDV)
+			}
+			
+			##### LDDVs (OPTIONAL) (these don't depend on shocktime)
+			if(length(ldnumdvs)) {
+				for(lag in 1:length(ldnumdvs)) {	# For each lag in the LDDVs
+					w <- p - lnumdvs[lag]			# w is the time period minus the appropriate lag of the LDV
+					if(w > 1) {	# If LDDV exists, meaning we've gone forward enough in time
+						wm1 <- w - 1
+						set[row] <- meanpv[w] - meanpv[wm1]	# For that LDDV, give it the corresponding PV
+					}	# Else: keep the set where it is, meaning don't replace the lag
+					row <- row + 1					# Move down the setlist (i.e. to the next lag of LDV)
+				}	
+			}
+			##### DSIV, LSIV, LDSIV, SIV (these depend on shocktime)
+			# If it's the shocktime
+			if(p == btime) { # Handles dsiv, lsiv, ldsiv, siv
+				if(length(dsivnamelist)) {
+					# Shock differenced var
+					for(var in 1:length(dsivnamelist)) {
+						set[row] <- shockval
+						row <- row + 1
+					}
+				}
+				if(length(lsivnamelist)) { # Nothing happens to LAGS in the shock period
+					for(var in 1:length(lsivnamelist)) { # One var for each lag
+						row <- row + 1
+					}
+				}
+				if(length(ldsivnamelist)) { # Nothing happens to LAGGED DIFFS in the shock period
+					for(var in 1:length(ldsivnamelist)) { # One var for each lag d
+						row <- row + 1
+					}
+				}
+				if(length(sivnamelist)) { # Whatever the shocked variable was in levels + shockval (only one shockvar)
+					for(var in 1:length(sivnamelist)) {
+						set[row] <- sivset[1] + shockval
+						row <- row + 1 
+					}
+				}
+			} 
+			else { # If it's after the shocktime
+				if(p > btime) { # Handles dsiv, lsiv, ldsiv, siv
+					if(length(dsivnamelist)) {
+						# Shock differenced var back to 0
+						for(var in 1:length(dsivnamelist)) {
+							set[row] <- 0
+							row <- row + 1
+						}
+					}
+					if(length(lsivnamelist)) {
+						for(lag in 1:length(lnumsiv)) { # We'll use the lag list this time instead of variable names
+							w <- p - btime
+							if(w >= lag) { # If the lag is within the shocktime
+								set[row] <- lsivset[1] + shockval # Give it the mean (or forceset) plus the shock
+							} # Else, keep the set where it is, meaning don't replace the lag
+							row <- row + 1
+						}
+					}
+					if(length(ldsivnamelist)) {
+						for(lagd in 1:length(ldnumsiv)) {
+							w <- p - btime
+							if(w == lagd) { # If it's the correct lagged period, the lagd variable gets the shockval
+								set[row] <- shockval
+							} else { # Or 0
+								set[row] <- 0
+							}
+							row <- row + 1
+						}
+					}
+					if(length(sivnamelist)) { # These have already been shocked, so just increment past
+						for(var in 1:length(sivnamelist)) {
+							row <- row + 1
+						}
+					}		
+				}
+			}
+			##### TREND (OPTIONAL) (doesn't depend on shocktime)
+			if(trend == TRUE) {
+				# It's the last coefficient in the set
+				set[length(B)] <- p - burnin # trend = sim time - burnin time		
+			}
+			# Still in the p:brange loop. Just FYI
+			# Create next predicted values. ``set'' has now been replaced by all of the new values
+			PV <- PB%*%set
+			# Same as before. 
+			if(expectedval == "TRUE") {
+				for(i in 1:sims) { # For each PB, of which there are sims
+					PV.error <- PV[i] + rnorm(1000, 0, sqrt(Sigma2[i])) # Average of 1000 errors with a variance of the ith Sigma
+					PV[i] <- mean(PV.error)
+				}
+			} else {
+				PV <- PV + rnorm(sims, 0, sqrt(Sigma2))
+			}
+			
+			# Quantities depend on user values
+			if(sig %in% c(75, 90, 95)) {
+				# Upper/lower bounds depend on specifications
+				if(ec == "TRUE") { # If ECM, add percentiles to old predicted values
+					if(constant == FALSE) { # Set this because it changes where LDV is
+						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + set[1]
+					}
+					else {
+						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + set[2]
+					}
+				}
+				else {
+					PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975))
+				}		
+			} 
+			else { # If the user needs their own significance value too
+				if(ec == "TRUE") { # If ECM, add percentiles to old predicted values
+					if(constant == FALSE) { # Set this because it changes where LDV is
+						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + set[1]
+					} else {
+						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + set[2]
+					}
+				} else {
+					PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu))
+				}
+			}
+			# Lastly, get the predicted values
+			if(ec == TRUE) {
+				if(constant == FALSE) {
+					meanpv[p] <- mean(PV) + set[1]
+				} 
+				else {
+					meanpv[p] <- mean(PV) + set[2]
+				}
+			} 
+			else {
+				meanpv[p] <- mean(PV)
+			}		
+			setTxtProgressBar(pb, p)
+		} # Close time loop
+		close(pb)		
+		
+		###################################
+		# Get simulation values to report #
+		###################################
+		# Discard the burnins
+		if(sig %in% c(75, 90, 95)) {
+			sims <- matrix(rep(NA, range*7), ncol = 7)
+			sims[,1] <- meanpv[(burnin+1):brange]
+			sims[,2:7] <- PV_pctile[(burnin+1):brange,]
+			colnames(sims) <- c("mean", "ll95", "ll90", "ll75", "ul75", "ul90", "ul95")
+		} 
+		else {
+			sims <- matrix(rep(NA, range*9), ncol = 9)
+			sims[,1] <- meanpv[(burnin+1):brange]
+			sims[,2:9] <- PV_pctile[(burnin+1):brange,]
+			colnames(sims) <- c("mean", "ll95", "ll90", "ll75", "ul75", "ul90", "ul95", paste("ll", sig, sep = ""), paste("ul", sig, sep = ""))
+		}
+		time <- seq(1, length(sims[,1]))
+		temp.names <- colnames(sims)
+		sims <- cbind(time, sims)
+		colnames(sims) <- c("time", temp.names)
+		z <- data.frame(sims)
+		
+		##########
+		# Graphs #
+		##########
+		if(graph == TRUE) {
+			if(expectedval == TRUE) {
+				ylabel <- "Expected Value"
+			} 
+			else {
+				ylabel <- "Predicted Value"
+			}
+			if(rarea == TRUE) { # Area graph
+				plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+					ylab = ylabel, xlab = "Time")
+				# 95
+				polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "skyblue1", border = NA)
+				# 90
+				polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "skyblue3", border = NA)
+				# 75
+				polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
+				# Actual response
+				lines(z$time, z$mean, lty = 2, lwd = 3)
+			}
+			else { # Spike graph
+				plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+					ylab = ylabel, xlab = "Time")
+				# 95
+				for(i in 1:length(z$time)) {
+					segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "skyblue1")
+				}
+				# 90
+				for(i in 1:length(z$time)) {
+					segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "skyblue3")
+				}
+				# 75
+				for(i in 1:length(z$time)) {
+					segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
+				}
+				# Actual response
+				points(z$time, z$mean, lwd = 4)
+			}
+		}
+		#########################
+		# Establish data output #
+		#########################
+		if(ec == TRUE) {
+			out <- list(z, res, pssbounds)
+			names(out) <- c("simulation", "model", "pssbounds")
+		}
+		else {
+			out <- list(z, res)
+			names(out) <- c("simulation", "model")
+		}
+	} # This closes the simulation loop
+	else { # If simulation is false
+		if(ec == TRUE) {
+			out <- list(res, pssbounds)
+			names(out) <- c("model", "pssbounds")
+		}
+		else {
+			out <- list(res)
+			names(out) <- c("model")
+		}
+	}
+	out	# Send data out	
+}
+
+##########################################
+# ------(5) area.simulation.graph -------#
+##########################################
+area.simulation.graph <- function(x) {
+	if(x$model$simulate == FALSE) {
+		stop("dynardl() object does not include simulation to graph.")
+	}
+	z <- x$simulation
+	plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+		ylab = "Y Value", xlab = "Time")
+	# 95
+	polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "skyblue1", border = NA)
+	# 90
+	polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "skyblue3", border = NA)
+	# 75
+	polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
+	# Actual response
+	lines(z$time, z$mean, lty = 2, lwd = 3)
+}
+
+##########################################
+# ------(6) spike.simulation.graph ------#
+##########################################
+spike.simulation.graph <- function(x) {
+	if(x$model$simulate == FALSE) {
+		stop("dynardl() object does not include simulation to graph.")
+	}
+	z <- x$simulation
+	plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+		ylab = "Y Value", xlab = "Time")
+	for(i in 1:length(z$time)) { # 95 percent sig
+		segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "skyblue1")
+	}
+	for(i in 1:length(z$time)) { # 90 percent sig
+		segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "skyblue3")
+	}
+	for(i in 1:length(z$time)) { # 75 percent sig
+		segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
+	}
+	# Actual response
+	points(z$time, z$mean, lwd = 4)
+}	
+
+##########################################
+# ------------(7) pssbounds -------------#
+##########################################
+#' Perform Pesaran, Shin and Smith (2001) cointegration test
+#' @param data data to be passed through from dynardl estimation
+#' @param obs number of observations
+#' @param fstat F-statistic of the joint test that \code{l.y = l.x1 + l.x2 +...+l.xk = 0}
+#' @param tstat t-static of the one-sided 
+#' @param case specify certain restrictions on the constant and trend terms, since critical values differ by case. Case I: no intercept or trend, Case II: restricted intercept, no trend, Case III: unrestricted intercept with no trend, Case IV: unrestricted intercept and restricted trend, Case V: unrestricted intercept and trend. Case III is most frequently specified
+#' @param k number of regressors appearing in levels in the estimated  model
+#' @param digits number of digits to present in output (rarely used)
+#' @param object.out output results (rarely used)
+#' @details
+#' pssbounds performs post-estimation cointegration testing using the bounds testing procedure from Pesaran, Shin, and Smith (2001). Since test statistics vary based on the number of \code{k} regressors, length of the series, these are required to specify, in addition to F- and t-statistics.
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords cointegration
+pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, case = NULL, k = NULL, digits = 3, object.out = FALSE) {
+	# If the model wasn't error correcting, we tell the user
+	if(!(identical(data, list()))) {
+		if(data$model$EC == FALSE) {
+			stop("pssbounds() only for error-correcting relationships. See Philips (2017).")
+		}
+	}
+	# Check if it was passed a dynardl object
+	if(!(identical(data, list()))) {
+		obs <- data$pssbounds$obs
+		fstat <- data$pssbounds$fstat
+		tstat <- data$pssbounds$tstat
+		case <- data$pssbounds$case
+		k <- data$pssbounds$k
+	}
+	# Check if we have all arguments
+	if(identical(obs, NULL)) {
+		stop("Provide either number of observations (obs = ) or data = dynardl model object.")
+	} else if(identical(fstat, NULL)) {
+		stop("Provide either fstat on lagged variables (fstat = ) or data = dynardl model object.")
+	} else if(identical(case, NULL)) {
+		stop("Provide either case of regression (case = ) or data = dynardl model object.")
+	} else if(identical(k, NULL)) {
+		stop("Provide either k number of lagged variables (k = ) or data = dynardl model object.")
+	}
+	cases <- seq(1, 5, 1)
+	cases.roman <- c("I", "II", "III", "IV", "V")
+	fnote <- tnote <- NULL
+	if((case %in% cases.roman) == TRUE) {
+		if(case == "I") {case <- 1}
+		else if (case == "II") {case <- 2}
+		else if (case == "III") {case <- 3}
+		else if (case == "IV") {case <- 4}
+		else if (case == "V") {case <- 5}
+		}
+	if((case %in% cases) == FALSE) {
+		stop("Case must be 1, 2, 3, 4, or 5.")
+	}
+	tstat <- round(tstat, digits = digits)
+	fstat <- round(fstat, digits = digits)
+	if (obs <= 30) {
+		# Case 1: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+			}
+		}
+		# Case II: Restricted intercept and no trend
+		else if (case == 2) {
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(4.025, 4.025, 5.070, 5.070, 7.595, 7.595, # 0
+				3.303, 3.797, 4.090, 4.663, 6.027, 6.760, # 1
+				2.915, 3.695, 3.538, 4.428, 5.155, 6.265, # 2
+				2.676, 3.586, 3.272, 4.306, 4.614, 5.966, # 3
+				2.525, 3.560, 3.058, 4.223, 4.280, 5.840, # 4
+				2.407, 3.517, 2.910, 4.193, 4.134, 5.761, # 5
+				2.334, 3.515, 2.794, 4.148, 3.976, 5.691, # 6
+				2.277, 3.498, 2.730, 4.163, 3.864, 5.694), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+			}
+		}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.840, 6.840, 8.770, 8.770, 13.680, 13.680, # 0
+				4.290, 5.080, 5.395, 6.350, 8.170, 9.285, # 1
+				3.437, 4.470, 4.267, 5.473, 6.183, 7.873, # 2
+				3.008, 4.150, 3.710, 5.018, 5.333, 7.063, # 3
+				2.752, 3.994, 3.354, 4.774, 4.768, 6.670, # 4
+				2.578, 3.858, 3.125, 4.608, 4.537, 6.370, # 5
+				2.457, 3.797, 2.970, 4.499, 4.270, 6.211, # 6
+				2.384, 3.728, 2.875, 4.445, 4.104, 6.151), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T)	# 10
+			}
+		}
+		# Case IV: Unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.785, 5.785, 7.040, 7.040, 10.200, 10.200, # 0
+				4.427, 4.957, 5.377, 5.963, 7.593, 8.350, # 1
+				3.770, 4.535, 4.535, 5.415, 6.428, 7.505, # 2
+				3.378, 4.274, 4.048, 5.090, 5.666, 6.988, # 3
+				3.097, 4.118, 3.715, 4.878, 5.205, 6.640, # 4
+				2.907, 4.010, 3.504, 4.743, 4.850, 6.473, # 5
+				2.781, 3.941, 3.326, 4.653, 4.689, 6.358, # 6
+				2.681, 3.887, 3.194, 4.604, 4.490, 6.328), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+			}
+		}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.340, 10.340, 12.740, 12.740, 18.560, 18.560, # 0
+				6.010, 6.780, 7.360, 8.265, 10.605, 11.650, # 1
+				4.577, 5.600, 5.550, 6.747, 7.977, 9.413, # 2
+				3.868, 4.965, 4.683, 5.980, 6.643, 8.313, # 3
+				3.430, 4.624, 4.154, 5.540, 5.856, 7.578, # 4
+				3.157, 4.412, 3.818, 5.253, 5.347, 7.242, # 5
+				2.977, 4.260, 3.576, 5.065, 5.046, 6.930, # 6
+				2.483, 4.160, 3.394, 4.939, 4.779, 6.821), ncol = 6, byrow = T)	# 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+			}
+		}
+	}
+	else if (obs <= 35) {
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				11.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T)	 # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.980, 3.980, 4.945, 4.945, 7.350, 7.350, # 0
+				3.223, 3.757, 3.957, 4.530, 5.763, 6.480, # 1
+				2.845, 3.623, 3.478, 4.335, 4.948, 6.028, # 2
+				2.618, 3.532, 3.164, 4.194, 4.428, 5.816, # 3
+				2.460, 3.460, 2.947, 4.088, 4.093, 5.532, # 4
+				2.331, 3.417, 2.804, 4.013, 3.900, 5.419, # 5
+				2.254, 3.388, 2.685, 3.960, 3.713, 5.326, # 6
+				2.196, 3.370, 2.597, 3.907, 3.599, 5.230), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.810, 6.810, 8.640, 8.640, 13.290, 13.290, # 0
+				4.225, 5.050, 5.290, 6.175, 7.870, 8.960, # 1
+				3.393, 4.410, 4.183, 5.333, 6.140, 7.607, # 2
+				2.958, 4.100, 3.615, 4.913, 5.198, 6.845, # 3
+				2.696, 3.898, 3.276, 4.630, 4.590, 6.368, # 4
+				2.508, 3.763, 3.037, 4.443, 4.257, 6.040, # 5
+				2.387, 3.671, 2.864, 4.324, 4.016, 5.797, # 6
+				2.300, 3.606, 2.753, 4.209, 3.841, 5.686), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.690, 5.690, 6.900, 6.900, 9.975, 9.975, # 0
+				4.380, 4.867, 5.233, 5.777, 7.477, 8.213, # 1
+				3.698, 4.420, 4.433, 5.245, 6.328, 7.408, # 2
+				3.290, 4.176, 3.936, 4.918, 5.654, 6.926, # 3
+				3.035, 3.997, 3.578, 4.668, 5.147, 6.617, # 4
+				2.831, 3.879, 3.353, 4.500, 4.849, 6.511, # 5
+				2.685, 3.785, 3.174, 4.383, 4.629, 5.698, # 6
+				2.578, 3.710, 3.057, 4.319, 4.489, 5.064), ncol = 6, byrow = T)	 # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.240, 10.240, 12.580, 12.580, 18.020, 18.020, # 0
+				5.950, 6.680, 7.210, 8.055, 10.365, 11.295, # 1
+				4.517, 5.480, 5.457, 6.570, 7.643, 9.063, # 2
+				3.800, 4.888, 4.568, 5.795, 6.380, 7.730, # 3
+				3.374, 4.512, 4.036, 5.304, 5.604, 7.172, # 4
+				3.087, 4.277, 3.673, 5.002, 5.095, 6.770, # 5
+				2.879, 4.114, 3.426, 4.790, 4.704, 6.537, # 6
+				2.729, 3.985, 3.251, 4.640, 4.459, 6.206), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 40)	{
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.955, 3.955, 4.960, 4.960, 7.220, 7.220, # 0
+				3.210, 3.730, 3.937, 4.523, 5.593, 6.333, # 1
+				2.835, 3.585, 3.435, 4.260, 4.770, 5.855, # 2
+				2.592, 3.454, 3.100, 4.088, 4.310, 5.544, # 3
+				2.427, 3.395, 2.893, 4.000, 3.967, 5.455, # 4
+				2.306, 3.353, 2.734, 3.920, 3.657, 5.256, # 5
+				2.218, 3.314, 2.618, 3.863, 3.505, 5.121, # 6
+				2.152, 3.296, 2.523, 3.829, 3.402, 5.031), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.760, 6.760, 8.570, 8.570, 13.070, 13.070, # 0
+				4.235, 5.000, 5.260, 6.160, 7.625, 8.825, # 1
+				3.373, 4.377, 4.133, 5.260, 5.893, 7.337, # 2
+				2.933, 4.020, 3.548, 4.803, 5.018, 6.610, # 3
+				2.660, 3.838, 3.202, 4.544, 4.428, 6.250, # 4
+				2.483, 3.708, 2.962, 4.338, 4.045, 5.898, # 5
+				2.353, 3.599, 2.797, 4.211, 3.800, 5.643, # 6
+				2.260, 3.534, 2.676, 4.130, 3.644, 5.464), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.680, 5.680, 6.870, 6.870, 9.575, 9.575, # 0
+				4.343, 4.823, 5.180, 5.733, 7.207, 7.860, # 1
+				3.663, 4.378, 4.360, 5.138, 5.980, 6.973, # 2
+				3.264, 4.094, 3.850, 4.782, 5.258, 6.526, # 3
+				2.985, 3.918, 3.512, 4.587, 4.763, 6.200, # 4
+				2.781, 3.813, 3.257, 4.431, 4.427, 5.837, # 5
+				2.634, 3.719, 3.070, 4.309, 4.154, 5.699, # 6
+				2.517, 3.650, 2.933, 4.224, 3.971, 5.486), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.160, 10.160, 12.510, 12.510, 17.910, 17.910, # 0
+				5.915, 6.630, 7.135, 7.980, 10.150, 11.230, # 1
+				4.477, 5.420, 5.387, 6.437, 7.527, 8.803, # 2
+				3.760, 4.795, 4.510, 5.643, 6.238, 7.740, # 3
+				3.334, 4.438, 3.958, 5.226, 5.376, 7.092, # 4
+				3.032, 4.213, 3.577, 4.923, 4.885, 6.550, # 5
+				2.831, 4.040, 3.327, 4.700, 4.527, 6.263, # 6
+				2.668, 3.920, 3.121, 4.564, 4.310, 5.965), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 45) {
+		# Case I: no intercept, no trend
+		if (case == 1)	{
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.950, 3.950, 4.895, 4.895, 7.265, 7.265, # 0
+				3.190, 3.730, 3.877, 4.460, 5.607, 6.193, # 1
+				2.788, 3.540, 3.368, 4.203, 4.800, 5.725, # 2
+				2.560, 3.428, 3.078, 4.022, 4.270, 5.412, # 3
+				2.402, 3.345, 2.850, 3.905, 3.892, 5.173, # 4
+				2.276, 3.297, 2.694, 3.829, 3.674, 5.019, # 5
+				2.188, 3.254, 2.591, 3.766, 3.540, 4.931, # 6
+				2.131, 3.223, 2.504, 3.723, 3.383, 4.832), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.760, 6.760, 8.590, 8.590, 12.930, 12.930, # 0
+				4.225, 5.020, 5.235, 6.135, 7.740, 8.650, # 1
+				3.330, 4.347, 4.083, 5.207, 5.920, 7.197, # 2
+				2.893, 3.983, 3.535, 4.733, 4.983, 6.423, # 3
+				2.638, 3.772, 3.178, 4.450, 4.394, 5.914, # 4
+				2.458, 3.647, 2.922, 4.268, 4.030, 5.598, # 5
+				2.327, 3.541, 2.764, 4.123, 3.790, 5.411, # 6
+				2.238, 3.461, 2.643, 4.004, 3.595, 5.225), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.625, 5.625, 6.750, 6.750, 9.555, 9.555, # 0
+				4.300, 4.780, 5.130, 5.680, 7.133, 7.820, # 1
+				3.625, 4.330, 4.335, 5.078, 5.878, 6.870, # 2
+				3.226, 4.054, 3.822, 4.714, 5.150, 6.280, # 3
+				2.950, 3.862, 3.470, 4.470, 4.628, 5.865, # 4
+				2.750, 3.739, 3.211, 4.309, 4.251, 5.596, # 5
+				2.606, 3.644, 3.025, 4.198, 3.998, 5.463, # 6
+				2.484, 3.570, 2.899, 4.087, 3.829, 5.313), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.150, 10.150, 12.400, 12.400, 17.500, 17.500, # 0
+				5.880, 6.640, 7.080, 7.910, 9.890, 10.965, # 1
+				4.437, 5.377, 5.360, 6.373, 7.317, 8.720, # 2
+				3.740, 4.780, 4.450, 5.560, 6.053, 7.458, # 3
+				3.298, 4.378, 3.890, 5.104, 5.224, 6.696, # 4
+				3.012, 4.147, 3.532, 4.800, 4.715, 6.293, # 5
+				2.796, 3.970, 3.267, 4.584, 4.364, 6.006, # 6
+				2.635, 3.838, 3.091, 4.413, 4.109, 5.785), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 50)	{
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.935, 3.935, 4.815, 4.815, 7.065, 7.065, # 0
+				3.177, 3.653, 3.860, 4.440, 5.503, 6.240, # 1
+				2.788, 3.513, 3.368, 4.178, 4.695, 5.758, # 2
+				2.538, 3.398, 3.048, 4.002, 4.188, 5.328, # 3
+				2.372, 3.320, 2.823, 3.872, 3.845, 5.150, # 4
+				2.259, 3.264, 2.670, 3.781, 3.593, 4.981, # 5
+				2.170, 3.220, 2.550, 3.708, 3.424, 4.880, # 6
+				2.099, 3.181, 2.457, 3.650, 3.282, 4.730), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.740, 6.740, 8.510, 8.510, 12.730, 12.730, # 0
+				4.190, 4.940, 5.220, 6.070, 7.560, 8.685, # 1
+				3.333, 4.313, 4.070, 5.190, 5.817, 7.303, # 2
+				2.873, 3.973, 3.500, 4.700, 4.865, 6.360, # 3
+				2.614, 3.746, 3.136, 4.416, 4.306, 5.874, # 4
+				2.435, 3.600, 2.900, 4.218, 3.955, 5.583, # 5
+				2.309, 3.507, 2.726, 4.057, 3.656, 5.331, # 6
+				2.205, 3.421, 2.593, 3.941, 3.498, 5.149), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.570, 5.570, 6.685, 6.685, 9.320, 9.320, # 0
+				4.230, 4.740, 5.043, 5.607, 7.017, 7.727, # 1
+				3.573, 4.288, 4.225, 5.030, 5.805, 6.790, # 2
+				3.174, 4.004, 3.730, 4.666, 5.050, 6.182, # 3
+				2.905, 3.822, 3.383, 4.432, 4.557, 5.793, # 4
+				2.703, 3.697, 3.149, 4.293, 4.214, 5.520, # 5
+				2.550, 3.609, 2.975, 4.143, 3.983, 5.345, # 6
+				2.440, 3.523, 2.832, 4.012, 3.762, 5.172), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.020, 10.020, 12.170, 12.170, 17.530, 17.530, # 0
+				5.780, 6.540, 6.985, 7.860, 9.895, 10.965, # 1
+				4.380, 5.350, 5.247, 6.303, 7.337, 8.643, # 2
+				3.673, 4.715, 4.368, 5.545, 5.995, 7.335, # 3
+				3.240, 4.350, 3.834, 5.064, 5.184, 6.684, # 4
+				2.950, 4.110, 3.480, 4.782, 4.672, 6.232, # 5
+				2.750, 3.944, 3.229, 4.536, 4.310, 5.881, # 6
+				2.590, 3.789, 3.039, 4.339, 4.055, 5.640), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 55)	{
+		# Case I: no intercept, no trend
+		if (case == 1)	{
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.900, 3.900, 4.795, 4.795, 6.965, 6.965, # 0
+				3.143, 3.670, 3.790, 4.393, 5.377, 6.047, # 1
+				2.748, 3.495, 3.303, 4.100, 4.610, 5.563, # 2
+				2.508, 3.356, 2.982, 3.942, 4.118, 5.200, # 3
+				2.345, 3.280, 2.763, 3.813, 3.738, 4.947, # 4
+				2.226, 3.241, 2.617, 3.743, 3.543, 4.839, # 5
+				2.139, 3.204, 2.490, 3.658, 3.330, 4.708, # 6
+				2.069, 3.148, 2.414, 3.608, 3.194, 4.562), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.700, 6.700, 8.390, 8.390, 12.700, 12.700, # 0
+				4.155, 4.925, 5.125, 6.045, 7.435, 8.460, # 1
+				3.280, 4.273, 3.987, 5.090, 5.707, 6.977, # 2
+				2.843, 3.920, 3.408, 4.623, 4.828, 6.195, # 3
+				2.578, 3.710, 3.068, 4.334, 4.244, 5.726, # 4
+				2.393, 3.583, 2.848, 4.160, 3.928, 5.408, # 5
+				2.270, 3.486, 2.676, 3.999, 3.636, 5.169, # 6
+				2.181, 3.398, 2.556, 3.904, 3.424, 4.989), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.570, 5.570, 6.660, 6.660, 9.300, 9.300, # 0
+				4.230, 4.730, 5.013, 5.547, 6.893, 7.537, # 1
+				3.553, 4.238, 4.183, 4.955, 5.678, 6.578, # 2
+				3.132, 3.956, 3.692, 4.582, 4.990, 6.018, # 3
+				2.868, 3.782, 3.358, 4.365, 4.455, 5.615, # 4
+				2.674, 3.659, 3.131, 4.206, 4.111, 5.329, # 5
+				2.538, 3.560, 2.946, 4.065, 3.870, 5.171, # 6
+				2.420, 3.481, 2.791, 3.950, 3.643, 5.021), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.110, 10.110, 12.170, 12.170, 17.480, 17.480, # 0
+				5.800, 6.515, 6.930, 7.785, 9.800, 10.675, # 1
+				4.370, 5.303, 5.190, 6.223, 7.227, 8.340, # 2
+				3.640, 4.670, 4.313, 5.425, 5.955, 7.225, # 3
+				3.210, 4.294, 3.794, 4.986, 5.108, 6.494, # 4
+				2.927, 4.068, 3.442, 4.690, 4.608, 5.977, # 5
+				2.724, 3.893, 3.197, 4.460, 4.230, 5.713, # 6
+				2.573, 3.760, 2.989, 4.271, 3.955, 5.474), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 60)	{
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.880, 3.880, 4.780, 4.780, 6.960, 6.960, # 0
+				3.127, 3.650, 3.803, 4.363, 5.383, 6.033, # 1
+				2.738, 3.465, 3.288, 4.070, 4.558, 5.590, # 2
+				2.496, 3.346, 2.962, 3.910, 4.068, 5.250, # 3
+				2.323, 3.273, 2.743, 3.792, 3.710, 4.965, # 4
+				2.204, 3.210, 2.589, 3.683, 3.451, 4.764, # 5
+				2.114, 3.153, 2.456, 3.598, 3.293, 4.615, # 6
+				2.044, 3.104, 2.373, 3.540, 3.129, 4.507), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.700, 6.700, 8.460, 8.460, 12.490, 12.490, # 0
+				4.145, 4.950, 5.125, 6.000, 7.400, 8.510, # 1
+				3.270, 4.260, 4.000, 5.057, 5.697, 6.987, # 2
+				2.838, 3.923, 3.415, 4.615, 4.748, 6.188, # 3
+				2.568, 3.712, 3.062, 4.314, 4.176, 5.676, # 4
+				2.385, 3.565, 2.817, 4.097, 3.783, 5.338, # 5
+				2.253, 3.436, 2.643, 3.939, 3.531, 5.081, # 6
+				2.155, 3.353, 2.513, 3.823, 3.346, 4.895), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.555, 5.555, 6.630, 6.630, 9.245, 9.245, # 0
+				4.203, 4.693, 4.980, 5.527, 6.780, 7.377, # 1
+				3.540, 4.235, 4.180, 4.938, 5.620, 6.503, # 2
+				3.130, 3.968, 3.684, 4.584, 4.928, 5.950, # 3
+				2.852, 3.773, 3.323, 4.333, 4.412, 5.545, # 4
+				2.653, 3.637, 3.086, 4.154, 4.013, 5.269, # 5
+				2.510, 3.519, 2.900, 3.999, 3.775, 5.086, # 6
+				2.392, 3.444, 2.756, 3.892, 3.584, 4.922), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.030, 10.030, 12.200, 12.200, 17.020, 17.020, # 0
+				5.765, 6.500, 6.905, 7.735, 9.585, 10.420, # 1
+				4.350, 5.283, 5.190, 6.200, 7.057, 8.243, # 2
+				3.645, 4.678, 4.298, 5.445, 5.835, 7.108, # 3
+				3.200, 4.310, 3.772, 4.956, 5.066, 6.394, # 4
+				2.912, 4.047, 3.407, 4.632, 4.505, 5.920, # 5
+				2.709, 3.856, 3.137, 4.393, 4.117, 5.597, # 6
+				2.551, 3.716, 2.956, 4.230, 3.870, 5.338), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 65)	{
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.880, 3.880, 4.780, 4.780, 6.825, 6.825, # 0
+				3.143, 3.623, 3.787, 4.343, 5.350, 6.017, # 1
+				2.740, 3.455, 3.285, 4.070, 4.538, 5.475, # 2
+				2.492, 3.350, 2.976, 3.896, 4.056, 5.158, # 3
+				2.335, 3.252, 2.750, 3.755, 3.725, 4.940, # 4
+				2.209, 3.201, 2.596, 3.677, 3.430, 4.721, # 5
+				2.120, 3.145, 2.473, 3.583, 3.225, 4.571, # 6
+				2.043, 3.094, 2.373, 3.519, 3.092, 4.478), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.740, 6.740, 8.490, 8.490, 12.400, 12.400, # 0
+				4.175, 4.930, 5.130, 5.980, 7.320, 8.435, # 1
+				3.300, 4.250, 4.010, 5.080, 5.583, 6.853, # 2
+				2.843, 3.923, 3.435, 4.583, 4.690, 6.143, # 3
+				2.574, 3.682, 3.068, 4.274, 4.188, 5.694, # 4
+				2.397, 3.543, 2.835, 4.090, 3.783, 5.300, # 5
+				2.256, 3.430, 2.647, 3.921, 3.501, 5.051, # 6
+				2.156, 3.334, 2.525, 3.808, 3.310, 4.871), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.510, 5.510, 6.550, 6.550, 8.960, 8.960, # 0
+				4.187, 4.660, 4.950, 5.467, 6.707, 7.360, # 1
+				3.535, 4.208, 4.123, 4.903, 5.545, 6.453, # 2
+				3.122, 3.942, 3.626, 4.538, 4.848, 5.842, # 3
+				2.848, 3.743, 3.300, 4.280, 4.347, 5.552, # 4
+				2.647, 3.603, 3.063, 4.123, 4.020, 5.263, # 5
+				2.499, 3.490, 2.880, 3.978, 3.758, 5.040, # 6
+				2.379, 3.406, 2.730, 3.879, 3.557, 4.902), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(9.970, 9.970, 11.960, 11.960, 16.850, 16.850, # 0
+				5.755, 6.470, 6.890, 7.660, 9.475, 10.515, # 1
+				4.353, 5.257, 5.137, 6.173, 7.013, 8.230, # 2
+				3.638, 4.643, 4.268, 5.415, 5.795, 7.053, # 3
+				3.196, 4.262, 3.732, 4.920, 4.974, 6.378, # 4
+				2.897, 4.022, 3.372, 4.613, 4.482, 5.923, # 5
+				2.690, 3.830, 3.137, 4.363, 4.111, 5.586, # 6
+				2.531, 3.685, 2.924, 4.206, 3.835, 5.339), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 70) {
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58,# 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.875, 3.875, 4.750, 4.750, 6.740, 6.740, # 0
+				3.120, 3.623, 3.780, 4.327, 5.157, 5.957, # 1
+				2.730, 3.445, 3.243, 4.043, 4.398, 5.463, # 2
+				2.482, 3.310, 2.924, 3.860, 3.916, 5.088, # 3
+				2.320, 3.232, 2.725, 3.718, 3.608, 4.860, # 4
+				2.193, 3.161, 2.564, 3.650, 3.373, 4.717, # 5
+				2.100, 3.121, 2.451, 3.559, 3.180, 4.596, # 6
+				2.024, 3.079, 2.351, 3.498, 3.034, 4.426), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.670, 6.670, 8.370, 8.370, 12.240, 12.240, # 0
+				4.125, 4.880, 5.055, 5.915, 7.170, 8.405, # 1
+				3.250, 4.237, 3.947, 5.020, 5.487, 6.880, # 2
+				2.818, 3.880, 3.370, 4.545, 4.635, 6.055, # 3
+				2.552, 3.648, 3.022, 4.256, 4.098, 5.570, # 4
+				2.363, 3.510, 2.788, 4.073, 3.747, 5.285, # 5
+				2.233, 3.407, 2.629, 3.906, 3.436, 5.044, # 6
+				2.138, 3.325, 2.494, 3.786, 3.261, 4.821), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, 2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.530, 5.530, 6.530, 6.530, 8.890, 8.890, # 0
+				4.173, 4.647, 4.930, 5.457, 6.577, 7.313, # 1
+				3.505, 4.198, 4.100, 4.900, 5.448, 6.435, # 2
+				3.098, 3.920, 3.600, 4.512, 4.760, 5.798, # 3
+				2.832, 3.738, 3.272, 4.272, 4.293, 5.460, # 4
+				2.631, 3.589, 3.043, 4.100, 3.966, 5.234, # 5
+				2.485, 3.473, 2.860, 3.951, 3.720, 5.004, # 6
+				2.363, 3.394, 2.711, 3.842, 3.509, 4.808), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.020, 10.020, 12.000, 12.000, 16.660, 16.660, # 0
+				5.765, 6.455, 6.860, 7.645, 9.370, 10.320, # 1
+				4.330, 5.243, 5.110, 6.190, 6.873, 8.163, # 2
+				3.615, 4.635, 4.235, 5.363, 5.663, 6.953, # 3
+				3.182, 4.258, 3.720, 4.904, 4.922, 6.328, # 4
+				2.893, 4.008, 3.368, 4.590, 4.428, 5.898, # 5
+				2.683, 3.807, 3.107, 4.343, 4.070, 5.534, # 6
+				2.519, 3.669, 2.913, 4.168, 3.774, 5.248), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 75) {
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.895, 3.895, 4.760, 4.760, 6.915, 6.915, # 0
+				3.133, 3.597, 3.777, 4.320, 5.260, 5.957, # 1
+				2.725, 3.455, 3.253, 4.065, 4.458, 5.410, # 2
+				2.482, 3.334, 2.946, 3.862, 4.048, 5.092, # 3
+				2.313, 3.228, 2.725, 3.718, 3.687, 4.842, # 4
+				2.196, 3.166, 2.574, 3.641, 3.427, 4.620, # 5
+				2.103, 3.111, 2.449, 3.550, 3.219, 4.526, # 6
+				2.023, 3.068, 2.360, 3.478, 3.057, 4.413), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.720, 6.720, 8.420, 8.420, 12.540, 12.540, # 0
+				4.150, 4.885, 5.140, 5.920, 7.225, 8.300, # 1
+				3.277, 4.243, 3.983, 5.060, 5.513, 6.860, # 2
+				2.838, 3.898, 3.408, 4.550, 4.725, 6.080, # 3
+				2.558, 3.654, 3.042, 4.244, 4.168, 5.548, # 4
+				2.380, 3.515, 2.802, 4.065, 3.772, 5.213, # 5
+				2.244, 3.397, 2.637, 3.900, 3.496, 4.966, # 6
+				2.134, 3.313, 2.503, 3.768, 3.266, 4.801), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(5.530, 5.530, 6.580, 6.580, 8.905, 8.905, # 0
+				4.193, 4.647, 4.937, 5.443, 6.613, 7.253, # 1
+				3.505, 4.213, 4.120, 4.855, 5.505, 6.298, # 2
+				3.110, 3.900, 3.624, 4.488, 4.808, 5.786, # 3
+				2.832, 3.717, 3.298, 4.260, 4.300, 5.377, # 4
+				2.636, 3.579, 3.054, 4.079, 3.984, 5.153, # 5
+				2.486, 3.469, 2.874, 3.914, 3.728, 4.954, # 6
+				2.372, 3.370, 2.718, 3.807, 3.511, 4.789), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+			}
+		}
+	# Case V: unrestricted intercept, unrestricted trend
+	else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(10.030, 10.030, 12.080, 12.080, 16.610, 16.610, # 0
+				5.765, 6.470, 6.880, 7.675, 9.325, 10.325, # 1
+				4.323, 5.273, 5.140, 6.153, 6.930, 8.027, # 2
+				3.618, 4.630, 4.253, 5.333, 5.698, 6.970, # 3
+				3.182, 4.248, 3.724, 4.880, 4.932, 6.224, # 4
+				2.890, 3.993, 3.382, 4.567, 4.393, 5.788, # 5
+				2.681, 3.800, 3.111, 4.310, 4.060, 5.459, # 6
+				2.530, 3.648, 2.915, 4.143, 3.768, 5.229), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else if (obs <= 80) {
+ 	# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Small-sample critical values are not provided for Case I. Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case I. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.870, 3.870, 4.725, 4.725, 6.695, 6.695, # 0
+				3.113, 3.610, 3.740, 4.303, 5.157, 5.917, # 1
+				2.713, 3.453, 3.235, 4.053, 4.358, 5.393, # 2
+				2.474, 3.312, 2.920, 3.838, 3.908, 5.004, # 3
+				2.303, 3.220, 2.688, 3.698, 3.602, 4.787, # 4
+				2.303, 3.154, 2.550, 3.606, 3.351, 4.587, # 5
+				2.088, 3.103, 2.431, 3.518, 3.173, 4.485, # 6
+				2.017, 3.052, 2.336, 3.458, 3.021, 4.350), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(6.720, 6.720, 8.400, 8.400, 12.120, 12.120, # 0
+				4.135, 4.895, 5.060, 5.930, 7.095, 8.260, # 1
+				3.260, 4.247, 3.940, 5.043, 5.407, 6.783, # 2
+				2.823, 3.885, 3.363, 4.515, 4.568, 5.960, # 3
+				2.548, 3.644, 3.010, 4.216, 4.096, 5.512, # 4
+				2.355, 3.500, 2.787, 4.015, 3.725, 5.163, # 5
+				2.236, 3.381, 2.627, 3.864, 3.457, 4.943, # 6
+				2.129, 3.289, 2.476, 3.746, 3.233, 4.760), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case III. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(3.870, 3.870, 4.725, 4.725, 6.695, 6.695, # 0
+				3.113, 3.610, 3.740, 4.303, 5.157, 5.917, # 1
+				2.713, 3.453, 3.235, 4.053, 4.358, 5.393, # 2
+				2.474, 3.312, 2.920, 3.838, 3.908, 5.004, # 3
+				2.303, 3.220, 2.688, 3.698, 3.602, 4.787, # 4
+				2.180, 3.154, 2.550, 3.606, 3.351, 4.587, # 5
+				2.088, 3.103, 2.431, 3.518, 3.173, 4.485, # 6
+				2.017, 3.052, 2.336, 3.458, 3.021, 4.350), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+			fmat <- matrix(c(9.960, 9.960, 12.060, 12.060, 16.600, 16.600, # 0
+				5.725, 6.450, 6.820, 7.670, 9.170, 10.240, # 1
+				4.307, 5.223, 5.067, 6.103, 6.730, 8.053, # 2
+				3.588, 4.605, 4.203, 5.320, 5.620, 6.908, # 3
+				3.160, 4.230, 3.678, 4.840, 4.890, 6.164, # 4
+				2.867, 3.975, 3.335, 4.535, 4.375, 5.703, # 5
+				2.657, 3.776, 3.077, 4.284, 4.000, 5.397, # 6
+				2.504, 3.631, 2.885, 4.111, 3.728, 5.160), ncol = 6, byrow = T) # 7
+			if (!is.null(tstat)) {
+				tnote <- "Small-sample critical values not provided for Case V. Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+	 				-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	else { # asymtotic
+		# Case I: no intercept, no trend
+		if (case == 1) {
+			# Doesn't exist! Use asym. crit values
+			fnote <- "Asymptotic critical values used."
+			#		0.10        0.05	   0.010
+			# 	 I(0)   I(1)  I(0)  I(1)  I(0) I(1)
+			fmat <- matrix(c(3.00, 3.00, 4.20, 4.20, 7.17, 7.17, # 0
+				2.44, 3.28, 3.15, 4.11, 4.81, 6.02, # 1
+				2.17, 3.19, 2.72, 3.83, 3.88, 5.30, # 2
+				2.01, 3.10, 2.45, 3.63, 3.42, 4.84, # 3
+				1.90, 3.01, 2.26, 3.48, 3.07, 4.44, # 4
+				1.81, 2.93, 2.14, 3.34, 2.82, 4.21, # 5
+				1.75, 2.87, 2.04, 3.24, 2.66, 4.05, # 6
+				1.70, 2.83, 1.97, 3.18, 2.54, 3.91, # 7
+				1.66, 2.79, 1.91, 3.11, 2.45, 3.79, # 8
+				1.63, 2.75, 1.86, 3.05, 2.34, 3.68, # 9
+				1.60, 2.72, 1.82, 2.99, 2.26, 3.60), ncol = 6, byrow = T) # 10
+			if (!is.null(tstat)) {
+				tnote <- "Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-1.62, -1.62, -1.95, -1.95, -2.58, -2.58, # 0
+					-1.62, -2.28, -1.95, -2.60, -2.58, -3.22, # 1
+					-1.62, -2.68, -1.95, -3.02, -2.58, -3.66, # 2
+					-1.62, -3.00, -1.95, -3.33, -2.58, -3.97, # 3
+					-1.62, -3.26, -1.95, -3.60, -2.58, -4.23, # 4
+					-1.62, -3.49, -1.95, -3.83, -2.58, -4.44, # 5
+					-1.62, -3.70, -1.95, -4.04, -2.58, -4.67, # 6
+					-1.62, -3.90, -1.95, -4.23, -2.58, -4.88, # 7
+					-1.62, -4.09, -1.95, -4.43, -2.58, -5.07, # 8
+					-1.62, -4.26, -1.95, -4.61, -2.58, -5.25, # 9
+					-1.62, -4.42, -1.95, -4.76, -2.58, -5.44), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case II: restricted intercept, no trend
+		else if (case == 2)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)  I(1)  I(0)  I(1)  I(0)  I(1)
+			fmat <- matrix(c(3.80, 3.80, 4.60, 4.60, 6.44, 6.44, # 0
+				3.02, 3.51, 3.62, 4.16, 4.94, 5.58, # 1
+				2.63, 3.35, 3.10, 3.87, 4.13, 5.00, # 2
+				2.37, 3.20, 2.79, 3.67, 3.65, 4.66, # 3
+				2.20, 3.09, 2.56, 3.49, 3.29, 4.37, # 4
+				2.08, 3.00, 2.39, 3.38, 3.06, 4.15, # 5
+				1.99, 2.94, 2.27, 3.28, 2.88, 3.99, # 6
+				1.92, 2.89, 2.17, 3.21, 2.73, 3.90, # 7
+				1.85, 2.85, 2.11, 3.15, 2.62, 3.77, # 8
+				1.80, 2.80, 2.04, 3.08, 2.50, 3.68, # 9
+				1.76, 2.77, 1.98, 3.04, 2.41, 3.61), ncol = 6, byrow = T) # 10
+			fnote <- "Asymptotic critical values used."
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case II."
+				}
+			}
+		# Case III: unrestricted intercept, no trend
+		else if (case == 3)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)  I(1)  I(0)  I(1)  I(0)  I(1)
+			fmat <- matrix(c(6.58, 6.58, 8.21, 8.21, 11.79, 11.79, # 0
+				4.04, 4.78, 4.94, 5.73, 6.84, 7.84, # 1
+				3.17, 4.14, 3.79, 4.85, 5.15, 6.36, # 2
+				2.72, 3.77, 3.23, 4.35, 4.29, 5.61, # 3
+				2.45, 3.52, 2.86, 4.01, 3.74, 5.06, # 4
+				2.26, 3.35, 2.62, 3.79, 3.41, 4.68, # 5
+				2.12, 3.23, 2.45, 3.61, 3.15, 4.43, # 6
+				2.03, 3.13, 2.32, 3.50, 2.96, 4.26, # 7
+				1.95, 3.06, 2.22, 3.39, 2.79, 4.10, # 8
+				1.88, 2.99, 2.14, 3.30, 2.65, 3.97, # 9
+				1.83, 2.94, 2.06, 3.24, 2.54, 3.86), ncol = 6, byrow = T) # 10
+			fnote <- "Asymptotic critical values used."
+			if (!is.null(tstat)) {
+				tnote <- "Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-2.57, -2.57, -2.86, -2.86, -3.43, -3.43, # 0
+					-2.57, -2.91, -2.86, -3.22, -3.43, -3.82, # 1
+					-2.57, -3.21, -2.86, -3.53, -3.43, -4.10, # 2
+					-2.57, -3.46, -2.86, -3.78, -3.43, -4.37, # 3
+					-2.57, -3.66, -2.86, -3.99, -3.43, -4.60, # 4
+					-2.57, -3.86, -2.86, -4.19, -3.43, -4.79, # 5
+					-2.57, -4.04, -2.86, -4.38, -3.43, -4.99, # 6
+					-2.57, -4.23, -2.86, -4.57, -3.43, -5.19, # 7
+					-2.57, -4.40, -2.86, -4.72, -3.43, -5.37, # 8
+					-2.57, -4.56, -2.86, -4.88, -3.42, -5.54, # 9
+					-2.57, -4.69, -2.86, -5.03, -3.43, -5.68), ncol = 6, byrow = T) # 10
+				}
+			}
+		# Case IV: unrestricted intercept, restricted trend
+		else if (case == 4)	{
+			#		0.10         0.05		   0.010
+			# 	 I(0)  I(1)  I(0)  I(1)  I(0)  I(1)
+			fmat <- matrix(c(5.37, 5.37, 6.29, 6.29, 8.26, 8.26, # 0
+				4.05, 4.49, 4.68, 5.15, 6.10, 6.73, # 1
+				3.38, 4.02, 3.88, 4.61, 4.99, 5.85, # 2
+				2.97, 3.74, 3.38, 4.23, 4.30, 5.23, # 3
+				2.68, 3.53, 3.05, 3.97, 3.81, 4.92, # 4
+				2.49, 3.38, 2.81, 3.76, 3.50, 4.63, # 5
+				2.33, 3.25, 2.63, 3.62, 3.27, 4.39, # 6
+				2.22, 3.17, 2.50, 3.50, 3.07, 4.23, # 7
+				2.13, 3.09, 2.38, 3.41, 2.93, 4.06, # 8
+				2.05, 3.02, 2.30, 3.33, 2.79, 3.93, # 9
+				1.98, 2.97, 2.21, 3.25, 2.68, 3.84), ncol = 6, byrow = T) # 10
+			fnote <- "Asymptotic critical values used."
+			if (!is.null(tstat)) {
+				tnote <- "Critical values do not currently exist for Case IV."
+				}
+			}
+		# Case V: unrestricted intercept, unrestricted trend
+		else { # case == 5
+			#		0.10         0.05		   0.010
+			# 	 I(0)  I(1)  I(0)  I(1)  I(0)  I(1)
+			fmat <- matrix(c(9.81, 9.81, 11.64, 11.64, 15.73, 15.73, # 0
+				5.59, 6.26, 6.56, 7.30, 8.74, 9.63, # 1
+				4.19, 5.06, 4.87, 5.85, 6.34, 7.52, # 2
+				3.47, 4.45, 4.01, 5.07, 5.17, 6.36, # 3
+				3.03, 4.06, 3.47, 4.57, 4.40, 5.72, # 4
+				2.75, 3.79, 3.12, 4.25, 3.93, 5.23, # 5
+				2.53, 3.59, 2.87, 4.00, 3.60, 4.90, # 6
+				2.38, 3.45, 2.69, 3.83, 3.34, 4.63, # 7
+				2.26, 3.34, 2.55, 3.68, 3.15, 4.43, # 8
+				2.16, 3.24, 2.43, 3.56, 2.97, 4.24, # 9
+				2.07, 3.16, 2.33, 3.46, 2.84, 4.10), ncol = 6, byrow = T) # 10
+			fnote <- "Asymptotic critical values used."
+			if (!is.null(tstat)) {
+				tnote <- "Asymptotic critical values used."
+				#		0.10         0.05		   0.010
+				# 	 I(0)   I(1)    I(0)   I(1)  I(0)    I(1)
+				tmat <- matrix(c(-3.13, -3.13, -3.41, -3.41, -3.96, -3.97, # 0
+					-3.13, -3.40, -3.41, -3.69, -3.96, -4.26, # 1
+					-3.13, -3.63, -3.41, -3.95, -3.96, -4.53, # 2
+					-3.13, -3.84, -3.41, -4.16, -3.96, -4.73, # 3
+					-3.13, -4.04, -3.41, -4.36, -3.96, -4.96, # 4
+					-3.13, -4.21, -3.41, -4.52, -3.96, -5.13, # 5
+					-3.13, -4.37, -3.41, -4.69, -3.96, -5.31, # 6
+					-3.13, -4.53, -3.41, -4.85, -3.96, -5.49, # 7
+					-3.13, -4.68, -3.41, -5.01, -3.96, -5.65, # 8
+					-3.13, -4.82, -3.41, -5.15, -3.96, -5.79, # 9
+					-3.13, -4.96, -3.41, -5.29, -3.96, -5.94), ncol = 6, byrow = T) # 10
+				}
+			}
+		}
+	# We have an fmat and a tmat from above, as well as potentially a fnote and tnote
+	# Grabbing crit values from fmat/tmat above
+	# Narayan only provides values for k <= 7. If 7 < k, we're using k = 7 but noting it.
+	# For asymptotic: if k > 10, we're using k = 10 and noting it.
+	f_10_1 <- f_10_1 <- f_05_1 <- f_05_1 <- f_01_1 <- f_01_1 <- NULL
+	if (obs <= 80) { # max rows k = 7
+		if (k < 7) {
+			k2 <- k + 1 # b/c of 0'th row
+			f_10_0 <- fmat[k2,1]
+			f_10_1 <- fmat[k2,2]
+			f_05_0 <- fmat[k2,3]
+			f_05_1 <- fmat[k2,4]
+			f_01_0 <- fmat[k2,5]
+			f_01_1 <- fmat[k2,6]
+			}
+		else {
+			f_10_0 <- fmat[8,1]
+			f_10_1 <- fmat[8,2]
+			f_05_0 <- fmat[8,3]
+			f_05_1 <- fmat[8,4]
+			f_01_0 <- fmat[8,5]
+			f_01_1 <- fmat[8,6]
+			if (k > 7) {
+				fnote <- paste(fnote, "Small-sample critical values only available up to k = 7.", sep = " ")
+				}
+			}
+		}
+	else { # asym max rows k=10
+		if (k < 10) {
+			k2 <- k + 1
+			f_10_0 <- fmat[k2,1]
+			f_10_1 <- fmat[k2,2]
+			f_05_0 <- fmat[k2,3]
+			f_05_1 <- fmat[k2,4]
+			f_01_0 <- fmat[k2,5]
+			f_01_1 <- fmat[k2,6]
+			}
+		else {
+			f_10_0 <- fmat[11,1]
+			f_10_1 <- fmat[11,2]
+			f_05_0 <- fmat[11,3]
+			f_05_1 <- fmat[11,4]
+			f_01_0 <- fmat[11,5]
+			f_01_1 <- fmat[11,6]
+			if (k > 10)	{
+				fnote <- paste(fnote, "Asymptotic critical values only available up to k = 10.")
+				}
+			}
+		}
+	# Initialize some output
+	toutput <- ""
+	if (!is.null(tstat)) {
+		if (case == 2 | case == 4) {
+			}
+		else {
+			if (k < 10)	{
+				k2 <- k + 1
+				t_10_0 <- tmat[k2,1]
+				t_10_1 <- tmat[k2,2]
+				t_05_0 <- tmat[k2,3]
+				t_05_1 <- tmat[k2,4]
+				t_01_0 <- tmat[k2,5]
+				t_01_1 <- tmat[k2,6]
+				}
+			else {
+				t_10_0 <- tmat[11,1]
+				t_10_1 <- tmat[11,2]
+				t_05_0 <- tmat[11,3]
+				t_05_1 <- tmat[11,4]
+				t_01_0 <- tmat[11,5]
+				t_01_1 <- tmat[11,6]
+				tnote <- paste(tnote, "Asymptotic critical values only available up to k = 10.")
+				}
+			toutput <- paste("------------------------------------------------------",
+				"-                       t-test                       -",
+				"------------------------------------------------------",
+				"                <------- I(0) ------------ I(1) ----->",
+				paste("10% critical value", paste( t_10_0, t_10_1, sep = "            "), sep = "       "),
+				paste("5% critical value", paste( t_05_0, t_05_1, sep = "            "), sep = "        "),
+				paste("1% critical value", paste( t_01_0, t_01_1, sep = "            "), sep = "        "),
+				"\n",
+				paste("t statistic = ", tstat, sep = ""), sep = "\n ")
+			}
+		}
+	# Output
+	cat("\n",
+		"PESARAN, SHIN AND SMITH (2001) COINTEGRATION TEST", "\n\n",
+		paste("Observations: ", obs, sep = ""), "\n",
+		paste("Number of Regressors (k): ", k, sep = ""), "\n",
+		paste("Case: ", case, sep = ""), "\n\n",
+		"------------------------------------------------------", "\n",
+		"-                       F-test                       -", "\n",
+		"------------------------------------------------------", "\n",
+		"                <------- I(0) ------------ I(1) ----->", "\n",
+		paste("10% critical value", paste(f_10_0, f_10_1, sep = "            "), sep = "       "), "\n",
+		paste("5% critical value", paste(f_05_0, f_05_1, sep = "            "), sep = "        "), "\n",
+		paste("1% critical value", paste(f_01_0, f_01_1, sep = "            "), sep = "        "), "\n",
+		"\n\n",
+		paste("F-statistic = ", fstat, sep = ""), "\n",
+		toutput,
+		"\n",
+		"------------------------------------------------------", "\n",
+		if(!is.null(fnote)) {paste("F-statistic note: ", fnote, sep = "")}, "\n",
+		if(!is.null(tnote)) {paste("t-statistic note: ", tnote, sep = "")}, "\n")
+	if(toutput != "") {
+		out <- structure(list(k = k, obs = obs, fstat = fstat, tstat = tstat, case = case,
+			ftest.I0.p10 = f_10_0, ftest.I1.p10 = f_10_1,
+			ftest.I0.p05 = f_05_0, ftest.I1.p05 = f_05_1,
+			ftest.I0.p01 = f_01_0, ftest.I1.p01 = f_01_1,
+			ttest.I1.p10 = t_10_1, ttest.I0.p10 = t_10_0,
+			ttest.I1.p05 = t_05_1, ttest.I0.p05 = t_05_0,
+			ttest.I1.p01 = t_01_1, ttest.I0.p01 = t_01_0))
+		}
+	else {
+		out <- structure(list(k = k, obs = obs, fstat = fstat, tstat = tstat, case = case,
+			ftest.I0.p10 = f_10_0, ftest.I1.p10 = f_10_1,
+			ftest.I0.p05 = f_05_0, ftest.I1.p05 = f_05_1,
+			ftest.I0.p01 = f_01_0, ftest.I1.p01 = f_01_1))
+	}
+	if(object.out == TRUE) {
+		out
+	}	
+}
+
+
+##########################################
+# -----(8) dynardl.auto.correlated ------#
+##########################################
+#' Perform post-estimation tests for white-noise residuals
+#' @param x a \code{dynardl} model
+#' @param bg.type a character string for the type of Breusch-Godfrey test to
+#' run. The default is \code{Chisq}: the Chisq test statistic. The other option
+#' is \code{F}: the F-test statistic. 
+#' @param digits number of digits to round when showing output (rarely used).
+#' We recommend three.
+#' @param order test for up to p'th order of AR(p) autocorrelation when
+#' executing the Breusch-Godfrey test
+#' @param object.out if \code{TRUE}, and \code{dynardl.auto.correlated} is
+#' assigned to an object, the AIC, BIC, and results will be stored for the
+#' user's convenience.
+#' @return The results of autocorrelation tests. 
+#' @details
+#' \code{dynardl.auto.correlated} performs post-estimation diagnostics designed
+#' to help users with model specification (as an aside, this is also why
+#' \code{dynardl} has a \code{simulate = FALSE} argument; users can ensure the
+#' model is white noise residuals before estimating a potentially
+#' time-intensive simulation). These include the Breusch-Godfrey and
+#' Durbin-Watson tests for autocorrelation, Shapiro-Wilk test for normality,
+#' and various information criteria. The output reminds the user of the null
+#' hypotheses for the autocorrelation tests.
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords post-estimation utilities
+
+# @param dw.alt specifies hypotheses of Durbin-Watson test. \code{"greater"} tests H0 of \eqn{\rho=0} against Ha of \eqn{\rho>0}, \code{"less"} tests H0 of \eqn{\rho=0} against Ha of \eqn{\rho<0}, and \code{"two.sided"} tests H0 of \eqn{\rho=0} against \eqn{\rho!=0}
+dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NULL, object.out = FALSE) { # dw.alt = "greater",
+	out <- list()
+	if("model" %in% names(x)) {
+		if(!(is.null(order))) {
+			out$bg <- bgtest(res$model, type = bg.type, order = order)
+		} else {
+			out$bg <- bgtest(res$model, type = bg.type)
+		}
+		# out$dw <- dwtest(res$model, alternative = dw.alt)
+		out$sw <- shapiro.test(res$model$residuals)
+		out$AIC <- round(AIC(x$model), digits = digits)
+		out$BIC <- round(BIC(x$model), digits = digits)
+		out$logLik <- round(logLik(x$model), digits = digits)
+		flush.console()
+		cat("\n",
+			"------------------------------------------------------", "\n",
+			"Breusch-Godfrey LM Test", "\n",
+			paste("Test statistic:", round(out$bg$statistic, digits = 3), sep = " "), "\n",
+			paste("p-value:", round(out$bg$p.value, digits = 3), sep = " "), "\n",
+			paste("H_0: no autocorrelation up to AR", out$bg$parameter, sep = " "), "\n",
+			
+			"\n",
+			"------------------------------------------------------", "\n",
+			#
+			#"Durbin-Watson Test", "\n",
+			#paste("Test statistic:", round(out$dw$statistic, digits = 3), sep = " "), "\n",
+			#paste("p-value:", round(out$dw$p.value, digits = 3), sep = " "), "\n",
+			#paste("H_0: no AR(1) autocorrelation"), "\n",
+			#if(dw.alt == "greater") {
+			#print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is greater than 0.")	
+			#} else if(dw.alt == "two.sided") {
+			#	print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is greater OR less than 0 (two-sided).")		
+			#} else if(dw.alt == "less") {
+			#print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is less than 0.")		
+			#}
+			#	
+			#"\n",
+			#"------------------------------------------------------", "\n",
+			
+			"Shapiro-Wilk Test for Normality", "\n",
+			paste("Test statistic:", round(out$sw$statistic, digits = 3), sep = " "), "\n",
+			paste("p-value:", round(out$sw$p.value, digits = 3), sep = " "), "\n",
+			paste("H_0: residuals are distributed normal"), "\n",
+			
+			"\n",
+			"------------------------------------------------------", "\n",
+			paste("Log-likelihood:", round(out$logLik, digits = digits), sep = " "), "\n",
+			paste("AIC:", round(out$AIC, digits = digits), sep = " "), "\n",
+			paste("BIC:", round(out$BIC, digits = digits), sep = " "), "\n",
+			paste("Note: AIC and BIC calculated with k =", x$model$rank, sep = " ")
+			)
+			if(object.out == TRUE) {
+				out
+		}		
+	}
+	else {
+		stop("Provide a dynardl() object to test auto-correlation of residuals.")
+	}	
+}
+
+
+
+
+
+
+
+
+
