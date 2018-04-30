@@ -9,7 +9,7 @@ header {
 }
 
 .bg-primary {
-	background-color: #FB5936 !important;
+	background-color: #e6664a !important;
 	/*color: #FB5936;*/
 }
 
@@ -23,6 +23,18 @@ section {
   padding: 150px 0;
 }
 
-.bg-grey {
-	background-color: #3662fb !important;
+.bg-blue {
+	background-color: #4a6ce6 !important;
+}
+
+.bg-light {
+	background-color: #cbcbcb !important;
+}
+
+pre code {      /* for inline code */
+  background-color: #eee;
+  border: 1px solid #999;
+  display: block;
+  padding: 20px;
+  text-align: justify !important; 
 }

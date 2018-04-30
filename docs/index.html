@@ -21,7 +21,7 @@
   <body id="page-top">
 
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-grey fixed-top" id="mainNav">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-blue fixed-top" id="mainNav">
       <div class="container">
         <a class="navbar-brand js-scroll-trigger" href="#page-top">Home</a>
         <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
@@ -33,10 +33,20 @@
               <a class="nav-link js-scroll-trigger" href="#about">About</a>
             </li>
             <li class="nav-item">
+              <a class="nav-link js-scroll-trigger" href="#download">Download</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link js-scroll-trigger" href="#authors">Authors</a>
+            </li>
+            <li class="nav-item">
               <a class="nav-link js-scroll-trigger" href="index-R.html">R</a>
             </li>
             <li class="nav-item">
               <a class="nav-link js-scroll-trigger" href="index-Stata.html">Stata</a>
+            </li>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link js-scroll-trigger" href="#examplepapers">Example Papers</a>
             </li>
           </ul>
         </div>
@@ -55,44 +65,65 @@
         <div class="row">
           <div class="col-lg-8 mx-auto">
             <h2>About</h2>
-            <p class="lead">dynamac is</p>
+            <p class="lead"><strong>dynamac</strong> is a suite designed to assist users in modeling and visualizing the effects of autoregressive distributed lag models, as well as testing for cointegration. Below are the corresponding links for the R and Stata programs.</p>
             <ul>
-              <li>Clickable nav links that smooth scroll to page sections</li>
-              <li>Responsive behavior when clicking nav links perfect for a one page website</li>
-              <li>Bootstrap's scrollspy feature which highlights which section of the page you're on in the navbar</li>
-              <li>Minimal custom CSS so you are free to explore your own unique design options</li>
+              <li class="lead"><a href="index-R.html"><strong>dynamac</strong>  for R</a></li>
+              <li class="lead"><a href="index-Stata.html"><strong>dynamac</strong>  for Stata</a></li>
+			  <li class="lead">The hosting Github site can be found <a href="https://github.com/andyphilips/dynamac">here</a></li> 
             </ul>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="services" class="bg-light">
+    <section id="download" class="bg-light">
       <div class="container">
         <div class="row">
           <div class="col-lg-8 mx-auto">
-            <h2>Services we offer</h2>
-            <p class="lead">Lorem ipsum dolor sit amet, consectetur adipisicing elit. Aut optio velit inventore, expedita quo laboriosam possimus ea consequatur vitae, doloribus consequuntur ex. Nemo assumenda laborum vel, labore ut velit dignissimos.</p>
+            <h2>Download</h2>
+            <p class="lead">To download <strong>dynamac</strong> in R, you can use the devtools package:</p>
+			<pre>
+				<code>
+library(devtools)
+devtools::install_github("andyphilips/dynamac")
+library(dynamac)	
+				</code>
+			</pre>
+			<br>
+			<p class="lead">To download <strong>dynamac</strong> in Stata:</p>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="contact">
+    <section id="authors">
       <div class="container">
         <div class="row">
           <div class="col-lg-8 mx-auto">
-            <h2>Contact us</h2>
-            <p class="lead">Lorem ipsum dolor sit amet, consectetur adipisicing elit. Vero odio fugiat voluptatem dolor, provident officiis, id iusto! Obcaecati incidunt, qui nihil beatae magnam et repudiandae ipsa exercitationem, in, quo totam.</p>
+            <h2>Authors</h2>
+            <li class="lead"> <a href = "http://sorenjordan.com">Soren Jordan</a>, Department of Political Science, Auburn University. sorenjordanpols [AT] gmail.com </li>
+			<li class="lead"> <a href = "http://sorenjordan.com">Andrew Q. Philips</a>, Department of Political Science, Auburn University. sorenjordanpols [AT] gmail.com.  </li>
+          </div>
+        </div>
+      </div>
+    </section>
+	
+    <section id="examplepapers" class="bg-light">
+      <div class="container">
+        <div class="row">
+          <div class="col-lg-8 mx-auto">
+            <h2>Example Papers</h2>
+            <p class="lead">Use <strong>dynamac</strong> in one of your papers? Let me know (andrew.philips [AT] colorado.edu) and I will add it to the list below</p>
+			<li></li>
           </div>
         </div>
       </div>
     </section>
 
     <!-- Footer -->
-    <footer class="py-5 bg-dark">
+    <footer class="py-5 bg-blue">
       <div class="container">
-        <p class="m-0 text-center text-white">Copyright &copy; Your Website 2017</p>
+        <p class="m-0 text-center text-white">Andrew Q. Philips. 2018. Made using Bootstrap and gh-pages</p>
       </div>
       <!-- /.container -->
     </footer>
