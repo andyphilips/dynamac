@@ -29,14 +29,20 @@
         </button>
         <div class="collapse navbar-collapse" id="navbarResponsive">
           <ul class="navbar-nav ml-auto">
+              <li class="nav-item">
+                <a class="nav-link js-scroll-trigger" href="#description">Description</a>
+              </li>
             <li class="nav-item">
               <a class="nav-link js-scroll-trigger" href="#download">Download</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link js-scroll-trigger" href="#services">Services</a>
+              <a class="nav-link js-scroll-trigger" href="#examples">Examples</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link js-scroll-trigger" href="#contact">Contact</a>
+              <a class="nav-link js-scroll-trigger" href="#authors">Authors</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link js-scroll-trigger" href="index-Stata.html">Stata</a>
             </li>
           </ul>
         </div>
@@ -49,35 +55,60 @@
         <p class="lead">R</p>
       </div>
     </header>
+	
+    <section id="description">
+      <div class="container">
+        <div class="row">
+          <div class="col-lg-8 mx-auto">
+            <h2>Description</h2>
+            <p class="lead"><strong>dynamac</strong> is a suite of programs in R designed to assist users in modeling and visualizing the effects of autoregressive distributed lag models, as well as testing for cointegration. The core program is <strong>dynardl</strong>, a flexible program designed to dynamically simulate and plot a variety of types of autoregressive distributed lag models, including error-correction models. In addition there are several other programs:
+				<li><strong>pssbounds</strong> implements the bounds cointegration test proposed by Pesaran, Shin and Smith (2001) and discussed in Philips (2018) </li>
+				<li>A variety of post-estimation time series plots (<strong>area.simulation.graph</strong>, <strong>spike.simulation.graph</strong>)</li>
+				<li>A post-estimation command for residual diagnostics, <strong>dynardl.auto.correlated</strong></li>
+				<li>Helper functions for taking the first-difference, lag, and lagged first difference of a series</li>
+			</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <section id="download">
+    <section id="download" class="bg-light">
       <div class="container">
         <div class="row">
           <div class="col-lg-8 mx-auto">
             <h2>Download</h2>
-            <p class="lead">To download <strong>dynamac</strong> in R:</p>
+            <p class="lead">To download <strong>dynamac</strong> in R, you can use the devtools package:</p>
+			<pre>
+				<code>
+library(devtools)
+devtools::install_github("andyphilips/dynamac")
+library(dynamac)	
+				</code>
+			</pre>
+			A CRAN package should be available soon.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="services" class="bg-light">
+    <section id="examples">
       <div class="container">
         <div class="row">
           <div class="col-lg-8 mx-auto">
-            <h2>Services we offer</h2>
-            <p class="lead">Lorem ipsum dolor sit amet, consectetur adipisicing elit. Aut optio velit inventore, expedita quo laboriosam possimus ea consequatur vitae, doloribus consequuntur ex. Nemo assumenda laborum vel, labore ut velit dignissimos.</p>
+            <h2>Examples</h2>
+            <p class="lead">Examples of <strong>dynamac</strong> in R will be available soon as a working paper and vignette file.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="contact">
+    <section id="authors" class="bg-light">
       <div class="container">
         <div class="row">
           <div class="col-lg-8 mx-auto">
-            <h2>Contact us</h2>
-            <p class="lead">Lorem ipsum dolor sit amet, consectetur adipisicing elit. Vero odio fugiat voluptatem dolor, provident officiis, id iusto! Obcaecati incidunt, qui nihil beatae magnam et repudiandae ipsa exercitationem, in, quo totam.</p>
+            <h2>Authors</h2>
+            <li class="lead"> <a href = "http://sorenjordan.com">Soren Jordan</a>, Department of Political Science, Auburn University. sorenjordanpols [AT] gmail.com </li>
+			<li class="lead"> <a href = "http://sorenjordan.com">Andrew Q. Philips</a>, Department of Political Science, University of Colorado Boulder. andrew.philips [AT] colorado.edu </li>
           </div>
         </div>
       </div>

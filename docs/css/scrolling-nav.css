@@ -39,6 +39,10 @@ pre code {      /* for inline code */
   text-align: justify !important; 
 }
 
-.bg-pic {
-	background-image: url("https://github.com/andyphilips/dynamac/master/docs/img/spikeplot.jpg") !important;
+.bg-p {
+	background: url('https://github.com/andyphilips/dynamac/blob/master/docs/img/spikeplot.jpg') no-repeat center center fixed !important; /* "img/spikeplot.jpg" */
+	-webkit-background-size: cover;
+	-moz-background-size: cover;
+	background-size: cover;
+	-o-background-size: cover;
 }
