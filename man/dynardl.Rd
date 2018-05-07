@@ -21,12 +21,11 @@ the model.}
 \item{lags}{a list of variables and their corresponding lags to be
 estimated.}
 
-\item{diffs}{a list of variables and their corresponding difference to be
-differenced. Only first differences are supported.}
+\item{diffs}{a vector of variables to be differenced. Only first differences are supported.}
 
 \item{lagdiffs}{a list of variables to be included in lagged differences.}
 
-\item{levels}{a list of variables to be included in levels.}
+\item{levels}{a vector of variables to be included in levels.}
 
 \item{ec}{estimate model in error-correction form, (i.e., \code{y} appears
 in first-differences). By default, \code{ec} is set to \code{FALSE},
@@ -46,7 +45,7 @@ shocked.}
 The default is one standard deviation of the shocked variable.}
 
 \item{sims}{the number of simulations to use in creating the quantities of
-interest.}
+interest. The default is 1000.}
 
 \item{forceset}{by default, in the simulations, variables in levels will be
 set to their means; variables in differences will be set to 0.
@@ -56,18 +55,19 @@ using a list in \code{forceset}.}
 \item{burnin}{the number of time periods to disregard before recording the
 values. These do not include the \code{range}; in other words, they take
 place before the \code{range} specified above. Users can increase the
-number of \code{burnin} periods, but probably should not decrease them.}
+number of \code{burnin} periods, but probably should not decrease them. The
+default is 20.}
 
 \item{expectedval}{if this is \code{TRUE}, the simulation will record the
 expected values of across the \code{sims} by averaging errors. We recommend
 setting it to \code{FALSE}, since expected values do not account for
 stochastic error present in the model itself.}
 
-\item{trend}{include a linear time trend}
+\item{trend}{include a linear time trend. The default is FALSE.}
 
-\item{constant}{include a constant}
+\item{constant}{include a constant. The default is TRUE.}
 
-\item{graph}{create a plot of the sumulated response}
+\item{graph}{create a plot of the simulated response. The default is FALSE.}
 
 \item{rarea}{if \code{graph = TRUE}, create an area plot. If \code{graph =
 TRUE} and \code{rarea = FALSE}, a spike plot will be created.}
@@ -91,7 +91,38 @@ and plot predictions
 \details{
 Estimate an auto-regressive distributed lag model. Moreover, provide a
 graphical interpretation of the results by simulating the response of 
-the dependent variable to shocks in one of the weakly exogenous regressors.
+the dependent variable to shocks in one of the regressors.
+}
+\examples{
+# Using the inequality data from dynamac
+ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+       lags = list("concern" = 1, "incshare10" = 1),
+       diffs = c("incshare10", "urate"), 
+       ec = TRUE, simulate = FALSE)
+summary(ardl.model$model)
+
+# Adding a lagged difference of the dependent variable
+ardl.model.2 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+       lags = list("concern" = 1, "incshare10" = 1),
+       diffs = c("incshare10", "urate"), 
+       lagdiffs = list("concern" = 1),
+       ec = TRUE, simulate = FALSE)
+summary(ardl.model.2$model)
+
+# Does not work: levels must appear as a vector
+ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+       lags = list("concern" = 1, "incshare10" = 1),
+       levels = list("urate" = 1),
+       diffs = c("incshare10", "urate"), 
+       lagdiffs = list("concern" = 1),
+       ec = TRUE, simulate = FALSE)
+
+ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+       lags = list("concern" = 1, "incshare10" = 1),
+       levels = c("urate"),
+       diffs = c("incshare10", "urate"), 
+       lagdiffs = list("concern" = 1),
+       ec = TRUE, simulate = FALSE)
 }
 \author{
 Soren Jordan and Andrew Q. Philips

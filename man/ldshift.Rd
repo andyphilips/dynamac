@@ -2,27 +2,31 @@
 % Please edit documentation in R/dynamac.R
 \name{ldshift}
 \alias{ldshift}
-\title{Take lagged first-difference transformation of a series}
+\title{Take the lagged first difference of a series.}
 \usage{
 ldshift(x, l)
 }
 \arguments{
-\item{x}{the series to be first-differenced and then lagged}
+\item{x}{a series to be differenced}
 
 \item{l}{the number of lags}
 }
 \value{
-the lagged first-differenced series
+the lagged differenced series
 }
 \description{
-Take lagged first-difference transformation of a series
+Take the lagged first difference of a series.
 }
 \details{
-\code{ldshift} assumes that the series are ordered, that there is no missing
-data, and that the time intervals are even.
+\code{ldshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
 }
 \examples{
-ldshift(rnorm(20), l = 1)
+x.var <- runif(50)
+ld.1.x.var <- ldshift(x.var, 1)
+ld.2.x.var <- ldshift(x.var, 2)
+head(x.var)
+head(ld.1.x.var)
+head(ld.2.x.var)
 }
 \author{
 Soren Jordan and Andrew Q. Philips

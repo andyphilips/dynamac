@@ -1,9 +1,68 @@
-# Package: dynamac
-# Title: Dynamic simulation and testing for single-equation ARDL models
-# version 0.1.3.9000
-# 04/10/2018
+# version 0.1.4.9001
+# 5/7/2018
 # Authors: Soren Jordan, Andrew Q. Philips
-#
+
+# Corrections since previous version: typos in vignette and documentation
+
+# TO DO: 
+#   Simulate and test AUC quantities (long-term)
+#   Long-term citation of Wright (2017)
+#   Future release: permanent shifts as opposed to shocks?
+
+# Datasets exported: 
+#' Data on public concern about economic inequality
+#'
+#' A dataset from: Wright, Graham. 2017. "The political
+#' implications of American concerns about economic inequality."
+#' Political Behavior: 1-23. Online first. 
+#'
+#' @format A data frame with 49 rows and 9 variables:
+#' \describe{
+#'   \item{year}{Year}
+#'   \item{mood}{Public mood liberalism}
+#'   \item{urate}{Unemployment rate}
+#'   \item{concern}{Concern about economic inequality}
+#'   \item{demcontrol}{Democratic control of congress}
+#'   \item{incshare10}{Proportion of income of top 10 percent}
+#'   \item{csentiment}{Consumer sentiment}
+#'   \item{incshare01}{Proportion of income of top 1 percent}
+#' }
+#' @source \url{http://dx.doi.org/10.7910/DVN/UYUU9G}
+#' @docType data
+#' @keywords datasets
+#' @usage data(ineq)
+#' @name ineq
+NULL
+
+
+
+#' Data on US Supreme Court Approval
+#'
+#' A dataset from: Durr, Robert H., Andrew D. Martin, and Christina
+#' Wolbrecht. 2000. "Ideological divergence and public support for
+#' the Supreme Court." American Journal of Policial Science 44(4):
+#' 768-776.
+#'
+#' @format A data frame with 42 rows and 9 variables:
+#' \describe{
+#'   \item{dcalc}{Supreme Court support}
+#'   \item{l_dcalc}{Lagged Supreme Court spport}
+#'   \item{iddiv}{Ideological divergence}
+#'   \item{mooddev}{Mean deviation of Mood}
+#'   \item{dirdev}{Mean deviation of percent liberal decisions}
+#'   \item{sg}{Rulings against Solicitor General's amicus briefs}
+#'   \item{laws}{Laws declared unconstitutional}
+#'   \item{presapp}{Approval of president}
+#'   \item{congapp}{Approval of Congress}
+#' }
+#' @source \url{https://sites.lsa.umich.edu/admart/replication/}
+#' @docType data
+#' @keywords datasets
+#' @usage data(supreme.sup)
+#' @name supreme.sup
+NULL
+
+ 
 ## Dependencies: 	MASS (for multivariate normal draws)
 #					lmtest (for autocorrelation tests)
 #
@@ -23,9 +82,9 @@
 #	formula = [no default]				model formula
 #	data = [list()]						list of variables
 #	lags = [list()]						list of lags, like lags = list("x" = c(1,2) ...)
-# 	diffs = [list()]						list of diffs, like diffs = list("x" = c(1) ...)
+# 	diffs = [c()]						vector of first diffs, like diffs = c("x", "z" ...)
 #	lagdiffs = [list()]					list of variables to lagdiff, like lagdiffs = list("x" = c(1) ...)
-# 	levels = [list()]					vector of variables in levels, like c("x", "z" ...)
+# 	levels = [c()]						vector of variables in levels, like c("x", "z" ...)
 #	ec = [FALSE] 						should model be error correcting? (i.e. differenced y or not)
 #	range = [20] 						range of simulation
 #	sig = [95] 							significance for simulations
@@ -45,9 +104,13 @@
 #
 # (5) area.simulation.graph()
 #	x = [no default] 					dynardl() object containing a simulation and parameters
+#	changes = [FALSE]					should the plot be in levels of Y or changes from mean of Y?		
+#	bw = [FALSE]						should the plot be in black and white?				
 #
 # (6) spike.simulation.graph()
 #	x = [no default] 					dynardl() object containing a simulation and parameters
+#	changes = [FALSE]					should the plot be in levels of Y or changes from mean of Y?						
+#	bw = [FALSE]						should the plot be in black and white?
 #
 # (7) pssbounds()
 #	data = [list()]						a dynardl model object
@@ -60,30 +123,33 @@
 #	object.out = [FALSE]					do you want to print all of this into an object?
 #
 # (8) dynardl.auto.correlated()
-#	x = [no default]						a dynardl model object
+#	x = [no default]					a dynardl model object
 #	bg.type = ["Chisq"]		 			character string of Chisq or F for the type of bg test used
 #	digits = [3]						where to round AIC/BIC
 #	order = [NULL]						the order of autocorrelation to test in bgtest
-#	object.out = [FALSE]				do you want to print all of this into an object?
-
-
-library(MASS) 
-library(lmtest)
+#	object.out = [FALSE]					do you want to print all of this into an object?
 
 ##########################################
 # ------------(1) lshift ----------------#
 ##########################################
-#' Take lag transformation of a series
+#' Take lag transformation of a series.
 #' @param x a series to be lagged
 #' @param l the number of lags
 #' @return the lagged series
 #' @details
-#' \code{lshift} assumes that the series are ordered, that there is no missing
-#' data, and that the time intervals are even.
+#' \code{lshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
+#' @importFrom utils head
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
 #' @examples
-#' lshift(rnorm(20), l = 1)
+#' x.var <- runif(50)
+#' l.1.x.var <- lshift(x.var, 1)
+#' l.1.x.var <- lshift(x.var, 2)
+#' head(x.var)
+#' head(l.1.x.var)
+#' head(l.1.x.var)
+#' @export
+
 lshift <- function(x, l){
 	stopifnot(is.numeric(l))
 	stopifnot(is.numeric(x))
@@ -94,16 +160,20 @@ lshift <- function(x, l){
 ##########################################
 # ------------(2) dshift ----------------#
 ##########################################
-#' Take first-difference transformation of a series
-#' @param x the series to be first-differenced
-#' @return the first-differenced series
+#' Take first difference of a series.
+#' @param x a series to be differenced
+#' @return the differenced series
 #' @details
-#' \code{dshift} assumes that the series are ordered, that there is no missing
-#' data, and that the time intervals are even.
+#' \code{dshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
 #' @examples
-#' dshift(rnorm(20))
+#' x.var <- seq(0, 50, 5)
+#' d.x.var <- dshift(x.var)
+#' head(x.var)
+#' head(d.x.var)
+#' @export
+
 dshift <- function(x){
 	stopifnot(is.numeric(x))
 	out <- c(NA, diff(x))
@@ -111,19 +181,26 @@ dshift <- function(x){
 }
 
 ##########################################
-# ------------(3) ldshift ----------------#
+# ------------(3) ldshift ---------------#
 ##########################################
-#' Take lagged first-difference transformation of a series
-#' @param x the series to be first-differenced and then lagged
+#' Take the lagged first difference of a series.
+#' @param x a series to be differenced
 #' @param l the number of lags
-#' @return the lagged first-differenced series
+#' @return the lagged differenced series
 #' @details
-#' \code{ldshift} assumes that the series are ordered, that there is no missing
-#' data, and that the time intervals are even.
+#' \code{ldshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
+#' @importFrom utils head
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
 #' @examples
-#' ldshift(rnorm(20), l = 1)
+#' x.var <- runif(50)
+#' ld.1.x.var <- ldshift(x.var, 1)
+#' ld.2.x.var <- ldshift(x.var, 2)
+#' head(x.var)
+#' head(ld.1.x.var)
+#' head(ld.2.x.var)
+#' @export
+
 ldshift <- function(x, l){
 	stopifnot(is.numeric(l))
 	stopifnot(is.numeric(x))
@@ -131,7 +208,7 @@ ldshift <- function(x, l){
 	out
 }
 
-#########################################
+##########################################
 # ------------(4) dynardl ---------------#
 ##########################################
 #' Estimate and Simulate ARDL Model
@@ -142,10 +219,9 @@ ldshift <- function(x, l){
 #' the model.
 #' @param lags a list of variables and their corresponding lags to be
 #' estimated.
-#' @param diffs a list of variables and their corresponding difference to be
-#' differenced. Only first differences are supported.
+#' @param diffs a vector of variables to be differenced. Only first differences are supported.
 #' @param lagdiffs a list of variables to be included in lagged differences.
-#' @param levels a list of variables to be included in levels.
+#' @param levels a vector of variables to be included in levels.
 #' @param ec estimate model in error-correction form, (i.e., \code{y} appears
 #' in first-differences). By default, \code{ec} is set to \code{FALSE},
 #' meaning \code{y} will appear in levels. 
@@ -158,7 +234,7 @@ ldshift <- function(x, l){
 #' @param shockval the amount by which the \code{shockvar} should be shocked.
 #' The default is one standard deviation of the shocked variable.
 #' @param sims the number of simulations to use in creating the quantities of
-#' interest.
+#' interest. The default is 1000.
 #' @param forceset by default, in the simulations, variables in levels will be
 #' set to their means; variables in differences will be set to 0.
 #' Alternatively, users can set any variable in the model to a different value
@@ -166,14 +242,15 @@ ldshift <- function(x, l){
 #' @param burnin the number of time periods to disregard before recording the
 #' values. These do not include the \code{range}; in other words, they take
 #' place before the \code{range} specified above. Users can increase the
-#' number of \code{burnin} periods, but probably should not decrease them.
+#' number of \code{burnin} periods, but probably should not decrease them. The
+#' default is 20.
 #' @param expectedval if this is \code{TRUE}, the simulation will record the
 #' expected values of across the \code{sims} by averaging errors. We recommend
 #' setting it to \code{FALSE}, since expected values do not account for
 #' stochastic error present in the model itself.
-#' @param trend include a linear time trend
-#' @param constant include a constant
-#' @param graph create a plot of the sumulated response
+#' @param trend include a linear time trend. The default is FALSE.
+#' @param constant include a constant. The default is TRUE.
+#' @param graph create a plot of the simulated response. The default is FALSE.
 #' @param rarea if \code{graph = TRUE}, create an area plot. If \code{graph =
 #' TRUE} and \code{rarea = FALSE}, a spike plot will be created.
 #' @param modelout print the regression estimates in the console
@@ -187,11 +264,47 @@ ldshift <- function(x, l){
 #' @details
 #' Estimate an auto-regressive distributed lag model. Moreover, provide a
 #' graphical interpretation of the results by simulating the response of 
-#' the dependent variable to shocks in one of the weakly exogenous regressors.
+#' the dependent variable to shocks in one of the regressors.
 #' @param formula a symbolic description of the model to be estimated. ARDL
 #' models are estimated using linear regression.
+#' @importFrom graphics lines plot points polygon segments
+#' @importFrom stats AIC BIC as.formula coef lm logLik quantile rchisq rnorm sd sigma vcov
+#' @importFrom utils head flush.console head setTxtProgressBar txtProgressBar
+#' @importFrom MASS mvrnorm
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords simulation estimation ardl
+#' @examples
+#' # Using the inequality data from dynamac
+#' ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        diffs = c("incshare10", "urate"), 
+#'        ec = TRUE, simulate = FALSE)
+#' summary(ardl.model$model)
+#' 
+#' # Adding a lagged difference of the dependent variable
+#' ardl.model.2 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        diffs = c("incshare10", "urate"), 
+#'        lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = FALSE)
+#' summary(ardl.model.2$model)
+#'
+#' # Does not work: levels must appear as a vector
+#' ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        levels = list("urate" = 1),
+#'        diffs = c("incshare10", "urate"), 
+#'        lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = FALSE)
+#' 
+#' ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        levels = c("urate"),
+#'        diffs = c("incshare10", "urate"), 
+#'        lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = FALSE)
+#' @export
+
 dynardl <- function(formula,
 								data = list(),
 								lags = list(),
@@ -231,27 +344,27 @@ dynardl <- function(formula,
 	# Difference controls #
 	#######################
 	if(length(diffs)) {
-		if(!is.list(diffs)) {	# Stop for non-list diffs
-			stop("'diffs' must be a list")
-		}
-		else {
+	#	if(!is.list(diffs)) {	# Stop for non-list diffs
+	#		stop("'diffs' must be a list")
+	#	}
+	#	else {
 			for(i in 1:length(diffs)) {
-				if(!(is.numeric(diffs[[i]]))) { # Stop for diffs without diff level
-					stop("Declare differences with numeric list: diffs = list(\"X\" = c(1))")
-				}
-				else {			
-					for(j in 1:diffs[[i]]) {
-						if(diffs[[i]][j] > 1) {	# Stop for second or more diffs
-							stop("Second differences ('diffs' > 1) not supported")
-						}
-					}
+	#			if(!(is.numeric(diffs[[i]]))) { # Stop for diffs without diff level
+	#				stop("Declare differences with numeric list: diffs = list(\"X\" = c(1))")
+	#			}
+	#			else {			
+	#				for(j in 1:diffs[[i]]) {
+	#					if(diffs[[i]][j] > 1) {	# Stop for second or more diffs
+	#						stop("Second differences ('diffs' > 1) not supported")
+	#					}
+	#				}
 					# Warn if variables aren't in formula
-					if(!(names(diffs)[i] %in% all.vars(formula))) {
-							warning(paste(paste("Variable"), paste(names(diffs)[i]), paste("in the diffs list not found in model formula. Not included in differences."), sep = " "))
+					if(!(diffs[i] %in% all.vars(formula))) {
+							warning(paste(paste("Variable"), paste(diffs[i]), paste("in the diffs list not found in model formula. Not included in differences."), sep = " "))
 					}
 				}
-			}
-		}
+	#		}
+	#	}
 	}
 	################
 	# Lag controls #
@@ -329,33 +442,68 @@ dynardl <- function(formula,
 	#######################
 	# Simulation controls #
 	#######################
-	if(simulate == TRUE) {
+	shock.message <- NULL
 		#####################
 		# Shockvar controls #
 		#####################
-		if(length(shockvar) == 0) {
-			stop("'shockvar' must be specified for a dynamic simulation")
-		} 
-		else {
-			if (length(shockvar) > 1) {
-				stop("Only specify one shockvar in a dynamic simulation")
-			} 
-			else {
-				if(!(shockvar %in% all.vars(formula))) { # If it's not in the formula, that's a problem
-					stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found in model formula. Shock variable required for dynamic simulation."), sep = " "))
-				}
-				else { # If it's not estimated, that's another problem
-					if(!(shockvar %in% names(diffs))) { #if its not in diffs
+		# The first set of warnings are actually for all shockvars. Even if a simulation isn't estimated, we need to check the
+		#  syntax is correct *providing the user actually has a shockvar*
+		if(simulate == FALSE) {
+			if(!(identical(deparse(substitute(shockvar)), "list()"))) {	# If the user specified a shockvar of any sort
+				if(!(grepl("\"", deparse(substitute(shockvar))))) {	# And it's not in quotations
+					stop("'shockvar' must be specified in quotation marks.")		# Because it will break when it searches for shockvars later
+				}			
+				else {	# The rest are just warnings
+					if(length(shockvar) > 1) {
+						warning("You specified more than one shockvar, but since you are not simulating, I am ignoring it. Only specify one shockvar in a dynamic simulation.")
+					}
+					if(!(shockvar %in% all.vars(formula))) { # If it's not in the formula, that's a problem
+						warning("Your shockvar is not in the model formula, but since you are not simulating, I am ignoring it. Specify modeled variables for dynamic simulations.")
+					}
+					if(!(shockvar %in% diffs)) { #if its not in diffs
 						if(!(shockvar %in% names(lagdiffs))) {
 							if(!(shockvar %in% levels)) {
 								if(!(shockvar %in% names(lags))) {
-									stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found lags, lagdiffs, levels, or differences. Shock variable required for dynamic simulation."), sep = " "))
+									warning("Your shockvar is not found in lags, lagdiffs, levels, or differences, but since you are not simulating, I am ignoring it. Specify modeled variables for dynamic simulations.")
 								}
 							}
 						}
-					}
+					}		
 				}
 			}
+		}
+		else { # if simulate == TRUE
+			if(identical(deparse(substitute(shockvar)), "list()")) {	# If the user did NOT specify a shockvar of any sort
+				stop("'shockvar' must be specified for a dynamic simulation")
+			}
+			else {				
+				if(!(grepl("\"", deparse(substitute(shockvar))))) {	# And it's not in quotations
+					stop("'shockvar' must be specified in quotation marks.")		# Because it will break when it searches for shockvars later
+				}			
+				else { 
+					if(length(shockvar) > 1) {
+						stop("Only specify one shockvar in a dynamic simulation")
+					}
+					else {
+						if(!(shockvar %in% all.vars(formula))) { # If it's not in the formula, that's a problem
+							stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found in model formula. Shock variable required for dynamic simulation."), sep = " "))
+						}
+						else { # If it's not estimated, that's another problem
+							if(!(shockvar %in% diffs)) { #if its not in diffs
+								if(!(shockvar %in% names(lagdiffs))) {
+									if(!(shockvar %in% levels)) {
+										if(!(shockvar %in% names(lags))) {
+											stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found lags, lagdiffs, levels, or differences. Shock variable required for dynamic simulation."), sep = " "))
+										}
+									}
+								}
+							}
+						}
+					}	
+				}
+			}
+		if(shockval == sd(data[[shockvar]])) { # If it's the default shock value, remind the user
+			shock.message <- paste(paste(shockvar), paste("shocked by one standard deviation of"), paste(shockvar), paste("by default."), sep = " ")
 		}
 		#####################
 		# Forceset controls #
@@ -373,6 +521,9 @@ dynardl <- function(formula,
 				}
 			}
 		}
+		####################
+		# Logical controls #
+		####################	
 		if(time >= range) {
 			stop("The range of simulation must be longer than shock time.")
 		}
@@ -382,7 +533,7 @@ dynardl <- function(formula,
 	##################	
 	# Warn the opposite: in formula but not in estimation
 	for(i in 2:length(all.vars(formula))) { # for all x variables
-		if(!(all.vars(formula)[i] %in% names(diffs))) { #if its not in diffs
+		if(!(all.vars(formula)[i] %in% diffs)) { #if its not in diffs
 			if(!(all.vars(formula)[i] %in% names(lagdiffs))) {
 				if(!(all.vars(formula)[i] %in% levels)) {
 					if(!(all.vars(formula)[i] %in% names(lags))) {
@@ -464,7 +615,7 @@ dynardl <- function(formula,
 						assign(paste(v.name), lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))
 						if(names(lags)[i] %in% names(forceset)) {
 							# If the variable is in forceset, grab its value
-							lsivset <- c(lsivset, forceset[[names(lags)[i] == names(forceset)]])	
+							lsivset <- c(lsivset, as.numeric(forceset[(names(forceset) == names(lags)[i])][1]))
 						} 
 						else {
 							# If not, we use the mean
@@ -481,7 +632,7 @@ dynardl <- function(formula,
 						assign(paste(v.name), lshift(as.matrix(data[[names(lags[i])]]), l = lags[[i]][o]))
 						if(names(lags)[i] %in% names(forceset)) {
 							# If the variable is in forceset, grab its value
-							livsset <- c(livsset, forceset[[names(lags)[i] == names(forceset)]])	
+							livsset <- c(livsset, as.numeric(forceset[(names(forceset) == names(lags)[i])][1]))
 						} 
 						else {
 							# If not, we use the mean
@@ -509,11 +660,11 @@ dynardl <- function(formula,
 	# Differences. Will be less complicated because of LDV issue and only first differences supported
 	if (length(diffs)) {
 		for(i in 1:length(diffs)){ # loop thru list
-			if(names(diffs)[[i]] %in% shockvar) { # If it's a shockvar
-				dsiv <- cbind(dsiv, dshift(as.matrix(data[[names(diffs[i])]]))) # > D.1 not supported
-				v.name <- paste("d", diffs[i], names(diffs[i]), sep = ".")
+			if(diffs[i] %in% shockvar) { # If it's a shockvar
+				dsiv <- cbind(dsiv, dshift(as.matrix(data[diffs[i]]))) 
+				v.name <- paste("d.1", diffs[i], sep = ".") # > D.1 not supported
 				dsivnamelist <- c(dsivnamelist, v.name)
-				assign(paste(v.name), dshift(as.matrix(data[[names(diffs[i])]])))
+				assign(paste(v.name), dshift(as.matrix(data[diffs[i]])))
 				#if(names(diffs)[i] %in% names(forceset)) {
 				#	# If the variable is in forceset, grab its value
 				#	dsivset <- c(dsivset, forceset[[names(diffs)[i] == names(forceset)]])
@@ -522,10 +673,10 @@ dynardl <- function(formula,
 				dsivset <- c(dsivset, 0)	
 			}
 			else { # for non-shock vars
-				divs <- cbind(divs, dshift(as.matrix(data[[names(diffs[i])]]))) # > D.1 not supported
-				v.name <- paste("d", diffs[i], names(diffs[i]), sep = ".")
+				divs <- cbind(divs, dshift(as.matrix(data[diffs[i]])))
+				v.name <- paste("d.1", diffs[i], sep = ".") # > D.1 not supported
 				divnamelist <- c(divnamelist, v.name)
-				assign(paste(v.name), dshift(as.matrix(data[[names(diffs[i])]])))
+				assign(paste(v.name), dshift(as.matrix(data[diffs[i]])))
 				#if(names(diffs)[i] %in% names(forceset)) {
 				#	# If the variable is in forceset, grab its value
 				#	divset <- c(divset, forceset[[names(diffs)[i] == names(forceset)]])
@@ -592,7 +743,7 @@ dynardl <- function(formula,
 				sivnamelist <- c(sivnamelist, v.name)
 				assign(paste(v.name), as.matrix(data[levels[[i]]]))
 				if(levels[i] %in% names(forceset)) {
-					sivset <- c(sivset, forceset[[levels[i] == names(forceset)]])
+					sivset <- c(sivset, as.numeric(forceset[levels[i]]))
 				} 
 				else {
 					# If not, we use the mean
@@ -605,7 +756,7 @@ dynardl <- function(formula,
 				ivsnamelist <- c(ivsnamelist, v.name)
 				assign(paste(v.name), as.matrix(data[levels[[i]]]))
 				if(levels[i] %in% names(forceset)) {
-					ivsset <- c(ivsset, forceset[[levels[i] == names(forceset)]])
+					ivsset <- c(ivsset, as.numeric(forceset[levels[i]]))
 				} 
 				else {
 					# If not, we use the mean
@@ -665,6 +816,11 @@ dynardl <- function(formula,
 	# Add EC status to res object to help with pssbounds
 	res$EC <- ec
 	res$simulate <- simulate
+	res$ymean <- mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)	
+	
+	if(ec == TRUE) { # Include differenced (which should be 0) if it's EC
+		res$ymean.diff <- mean(dshift(as.matrix(data[[as.character(formula[[2]])]])), na.rm = T)
+	}
 	
 	# Warning about lags in EC model
 	if(ec == TRUE) {
@@ -677,7 +833,8 @@ dynardl <- function(formula,
 	print(ec.message)
 	if(!(identical(NULL, trend.message))) {print(trend.message)}
 	if(!(identical(NULL, constant.message))) {print(constant.message)}
-	
+	if(!(identical(NULL, shock.message))) {	print(shock.message)}
+
 	# Quantities of interest
 	B <- coef(res) # get betas
 	V <- vcov(res) # get vcov matrix
@@ -691,47 +848,54 @@ dynardl <- function(formula,
 	case <- tstat <- fstat <- obs <- k <- NULL
 	# Only possible if EC
 	if(ec == TRUE) {
-		if(trend == TRUE) {
-			if(constant == FALSE) {
-				case <- 0
-			}
-			else {
-				case <- 5
-			}
-		}
-		else {
-			if(constant == FALSE) {
-				case <- 1
-			}
-			else {
-				case <- 3
-			}
-		}
-		tstat <- coef(summary(res))[paste(ldvnamelist),3] # t stat on LDV
-		obs <- length(res$residuals) # number of observations in model
-		# Isolate variables in model in first lags
+		# Only possible if a variable (implied error-correcting) is in first lags, Isolate variables in model in first lags
 		R.temp <- rep(NA, length(coef(res)))
 		for(i in 1:length(R.temp)) {
 			# If that variable is a first lag, it's in the restriction set. 0 if not
 			ifelse(grepl("l.1.", names(coef(res))[i]) == TRUE, R.temp[i] <- 1, R.temp[i] <- 0)
+			# Except if it's the LDV, we don't want it
+			ifelse(names(coef(res))[i] == paste(ldvnamelist), R.temp[i] <- 0, R.temp[i] <- R.temp[i])
 		}
 		k <- sum(R.temp)
-		# This needs to be expanded so that each hypothesis gets its own row
-		R <- matrix(rep(0, length(coef(res))*k), nrow = k)
-		the.row <- 1
-		for(i in 1:length(R.temp)){
-			if(R.temp[i] == 1) { # If that model coefficient is a first lag
-				R[the.row, i] <- 1	# Then that row gets a 1 where the coefficient is
-				the.row <- the.row + 1
-			}			
+		if(k == 0) {
+			pssbounds <- "pssbounds not executed: no variables in first lags, so no cointegrating relationship implied."
+		} else{
+			if(trend == TRUE) {
+				if(constant == FALSE) {
+					case <- 0
+				}
+				else {
+					case <- 5
+				}
+			}
+			else {
+				if(constant == FALSE) {
+					case <- 1
+				}
+				else {
+					case <- 3
+				}
+			}
+			tstat <- coef(summary(res))[paste(ldvnamelist),3] # t stat on LDV
+			obs <- length(res$residuals) # number of observations in model
+			k <- sum(R.temp)
+			# This needs to be expanded so that each hypothesis gets its own row
+			R <- matrix(rep(0, length(coef(res))*k), nrow = k)
+			the.row <- 1
+			for(i in 1:length(R.temp)){
+				if(R.temp[i] == 1) { # If that model coefficient is a first lag
+					R[the.row, i] <- 1	# Then that row gets a 1 where the coefficient is
+					the.row <- the.row + 1
+				}			
+			}
+			# Restriction is always that it's equal to 0
+			q <- 0
+			fstat <- (1/k)*t(R%*%B-q)%*%solve(R%*%V%*%t(R))%*%(R%*%B-q)	
+			pssbounds <- data.frame(obs, k, tstat, fstat, case)
+			names(pssbounds) <- c("obs", "k", "tstat", "fstat", "case")
 		}
-		# Restriction is always that it's equal to 0
-		q <- 0
-		fstat <- (1/k)*t(R%*%B-q)%*%solve(R%*%V%*%t(R))%*%(R%*%B-q)	
-		pssbounds <- data.frame(obs, k, tstat, fstat, case)
-		names(pssbounds) <- c("obs", "k", "tstat", "fstat", "case")
 	}
-	
+		
 	###############
 	# Simulations #
 	###############		
@@ -804,9 +968,11 @@ dynardl <- function(formula,
 		# Values at t = 2 - range #
 		###########################		
 		# Progress bar to monitor dynardl
+		
 		print("dynardl estimating ...") 
 		flush.console()
 		pb <- txtProgressBar(min = 0, max = brange, style = 3)
+		
 		for(p in 2:brange) {
 			Sys.sleep(0.1)
 			row <- 1			# To work through setlist
@@ -873,16 +1039,18 @@ dynardl <- function(formula,
 					if(length(lsivnamelist)) {
 						for(lag in 1:length(lnumsiv)) { # We'll use the lag list this time instead of variable names
 							w <- p - btime
-							if(w >= lag) { # If the lag is within the shocktime
+							if(w == lnumsiv[lag]) { # If the lag is now the ``time'' (i.e. the lag + the shocktime)
 								set[row] <- lsivset[1] + shockval # Give it the mean (or forceset) plus the shock
-							} # Else, keep the set where it is, meaning don't replace the lag
+							} # else { # Else, keep the set where it is, meaning don't replace the lag
+							#set[row] <- lsivset[1]
+							#}
 							row <- row + 1
 						}
 					}
 					if(length(ldsivnamelist)) {
-						for(lagd in 1:length(ldnumsiv)) {
+						for(lagd in 1:length(lnumldsiv)) {
 							w <- p - btime
-							if(w == lagd) { # If it's the correct lagged period, the lagd variable gets the shockval
+							if(w == lnumldsiv[lagd]) { # If the lag is ``now'', the lagd variable gets the shockval
 								set[row] <- shockval
 							} else { # Or 0
 								set[row] <- 0
@@ -890,8 +1058,9 @@ dynardl <- function(formula,
 							row <- row + 1
 						}
 					}
-					if(length(sivnamelist)) { # These have already been shocked, so just increment past
+					if(length(sivnamelist)) { # Just increment past: no return to value
 						for(var in 1:length(sivnamelist)) {
+							# set[row] <- sivset[1]  	# NOT returning to original value
 							row <- row + 1
 						}
 					}		
@@ -973,9 +1142,9 @@ dynardl <- function(formula,
 			sims[,2:9] <- PV_pctile[(burnin+1):brange,]
 			colnames(sims) <- c("mean", "ll95", "ll90", "ll75", "ul75", "ul90", "ul95", paste("ll", sig, sep = ""), paste("ul", sig, sep = ""))
 		}
-		time <- seq(1, length(sims[,1]))
+		sim.time <- seq(1, length(sims[,1]))
 		temp.names <- colnames(sims)
-		sims <- cbind(time, sims)
+		sims <- cbind(sim.time, sims)
 		colnames(sims) <- c("time", temp.names)
 		z <- data.frame(sims)
 		
@@ -1026,10 +1195,12 @@ dynardl <- function(formula,
 		if(ec == TRUE) {
 			out <- list(z, res, pssbounds)
 			names(out) <- c("simulation", "model", "pssbounds")
+			out$simulation$shocktime <- time
 		}
 		else {
 			out <- list(z, res)
 			names(out) <- c("simulation", "model")
+			out$simulation$shocktime <- time
 		}
 	} # This closes the simulation loop
 	else { # If simulation is false
@@ -1048,62 +1219,218 @@ dynardl <- function(formula,
 ##########################################
 # ------(5) area.simulation.graph -------#
 ##########################################
-area.simulation.graph <- function(x) {
+#' Create an area graph of a simulated response in a dynardl model
+#' @param x a dynardl model with a simulation to be graphed
+#' @param changes whether the graph should be shown in levels of the dependent variable or in changes in levels. The default is \code{FALSE}
+#' @param bw should the colors be in black and white (for publication)? The default is \code{FALSE}
+#' @return an area graph
+#' @details
+#' When running \code{dynardl}, \code{simulate} must be true so that there is a simulation to graph.
+#' @importFrom graphics lines plot points polygon segments
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords utilities
+#' @examples
+#' # Using the ineq data in dynamac
+#' # Shocking Income Top 10
+#' ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        diffs = c("incshare10", "urate"), 
+#'        lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = TRUE, range = 30,
+#'        shockvar = "incshare10", graph = FALSE)
+#' area.simulation.graph(ardl.model)	# Shows absolute levels
+#' area.simulation.graph(ardl.model, changes = TRUE)  # Shows changes from mean level
+#' area.simulation.graph(ardl.model, bw = TRUE)	 # Grayscale plots
+#' @export
+
+area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 	if(x$model$simulate == FALSE) {
 		stop("dynardl() object does not include simulation to graph.")
 	}
 	z <- x$simulation
-	plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
-		ylab = "Y Value", xlab = "Time")
-	# 95
-	polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "skyblue1", border = NA)
-	# 90
-	polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "skyblue3", border = NA)
-	# 75
-	polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
-	# Actual response
-	lines(z$time, z$mean, lty = 2, lwd = 3)
+	if(changes == FALSE) { # If we're just plotting levels of Y
+		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+			ylab = "Y Value", xlab = "Time")
+		if(bw == FALSE) {
+			# 95
+			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "skyblue1", border = NA)
+			# 90
+			polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "skyblue3", border = NA)
+			# 75
+			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
+			# Actual response
+			lines(z$time, z$mean, lty = 2, lwd = 3)
+		} else {
+			# 95
+			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "grey70", border = NA)
+			# 90
+			polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "grey50", border = NA)
+			# 75
+			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
+			# Actual response
+			lines(z$time, z$mean, lty = 2, lwd = 3)	
+		}	
+	} else { # If it's changes from the mean, changes values, same code
+		z$ll95 <- z$ll95 - x$model$ymean
+		z$ul95 <- z$ul95 - x$model$ymean
+		z$ll90 <- z$ll90 - x$model$ymean
+		z$ul90 <- z$ul90 - x$model$ymean
+		z$ll75 <- z$ll75 - x$model$ymean
+		z$ul75 <- z$ul75 - x$model$ymean
+		z$mean <- z$mean - x$model$ymean
+		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+			ylab = "Changes from Y Mean Value", xlab = "Time")
+		if(bw == FALSE) {
+			# 95
+			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "skyblue1", border = NA)
+			# 90
+			polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "skyblue3", border = NA)
+			# 75
+			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
+			# Actual response
+			lines(z$time, z$mean, lty = 2, lwd = 3)
+		} else {
+			# 95
+			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "grey70", border = NA)
+			# 90
+			polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "grey50", border = NA)
+			# 75
+			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
+			# Actual response
+			lines(z$time, z$mean, lty = 2, lwd = 3)	
+		}	
+	}
 }
 
 ##########################################
 # ------(6) spike.simulation.graph ------#
 ##########################################
-spike.simulation.graph <- function(x) {
+#' Create a spike graph of a simulated response in a dynardl model
+#' @param x a dynardl model with a simulation to be graphed
+#' @param changes whether the graph should be shown in levels of the dependent variable or in changes in levels. The default is \code{FALSE}
+#' @param bw should the colors be in black and white (for publication)? The default is \code{FALSE}
+#' @return a spike graph
+#' @details
+#' When running \code{dynardl}, \code{simulate} must be true so that there is a simulation to graph.
+#' @importFrom graphics lines plot points polygon segments
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords utilities
+#' @examples
+#' # Using the ineq data in dynamac
+#' # Shocking Income Top 10
+#' ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        diffs = c("incshare10", "urate"), 
+#'        lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = TRUE, range = 30,
+#'        shockvar = "incshare10", graph = FALSE)
+#' spike.simulation.graph(ardl.model)	# Shows absolute levels
+#' spike.simulation.graph(ardl.model, changes = TRUE)  # Shows changes from mean level
+#' spike.simulation.graph(ardl.model, bw = TRUE)	 # Grayscale plots
+#' @export
+
+spike.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 	if(x$model$simulate == FALSE) {
 		stop("dynardl() object does not include simulation to graph.")
 	}
 	z <- x$simulation
-	plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
-		ylab = "Y Value", xlab = "Time")
-	for(i in 1:length(z$time)) { # 95 percent sig
-		segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "skyblue1")
+	if(changes == FALSE) { # If we're just plotting levels of Y
+		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+			ylab = "Y Value", xlab = "Time")	
+		if(bw == FALSE) {
+			for(i in 1:length(z$time)) { # 95 percent sig
+				segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "skyblue1")
+			}
+			for(i in 1:length(z$time)) { # 90 percent sig
+				segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "skyblue3")
+			}
+			for(i in 1:length(z$time)) { # 75 percent sig
+				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
+			}
+			# Actual response
+			points(z$time, z$mean, lwd = 4)
+		} else {
+			for(i in 1:length(z$time)) { # 95 percent sig
+				segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "grey70")
+			}
+			for(i in 1:length(z$time)) { # 90 percent sig
+				segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "grey50")
+			}
+			for(i in 1:length(z$time)) { # 75 percent sig
+				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
+			}
+			# Actual response
+			points(z$time, z$mean, lwd = 4)	
+		}
+	} else {	 # If it's changes from the mean, changes values, same code
+		z$ll95 <- z$ll95 - x$model$ymean
+		z$ul95 <- z$ul95 - x$model$ymean
+		z$ll90 <- z$ll90 - x$model$ymean
+		z$ul90 <- z$ul90 - x$model$ymean
+		z$ll75 <- z$ll75 - x$model$ymean
+		z$ul75 <- z$ul75 - x$model$ymean
+		z$mean <- z$mean - x$model$ymean
+		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
+			ylab = "Changes from Y Mean Value", xlab = "Time")	
+		if(bw == FALSE) {
+			for(i in 1:length(z$time)) { # 95 percent sig
+				segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "skyblue1")
+			}
+			for(i in 1:length(z$time)) { # 90 percent sig
+				segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "skyblue3")
+			}
+			for(i in 1:length(z$time)) { # 75 percent sig
+				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
+			}
+			# Actual response
+			points(z$time, z$mean, lwd = 4)
+		} else {
+			for(i in 1:length(z$time)) { # 95 percent sig
+				segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "grey70")
+			}
+			for(i in 1:length(z$time)) { # 90 percent sig
+				segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "grey50")
+			}
+			for(i in 1:length(z$time)) { # 75 percent sig
+				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
+			}
+			# Actual response
+			points(z$time, z$mean, lwd = 4)	
+		}
 	}
-	for(i in 1:length(z$time)) { # 90 percent sig
-		segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "skyblue3")
-	}
-	for(i in 1:length(z$time)) { # 75 percent sig
-		segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
-	}
-	# Actual response
-	points(z$time, z$mean, lwd = 4)
 }	
 
 ##########################################
 # ------------(7) pssbounds -------------#
 ##########################################
 #' Perform Pesaran, Shin and Smith (2001) cointegration test
-#' @param data data to be passed through from dynardl estimation
+#' @param data an optional \code{\link{dynardl}} model. We highly recommend this option. Users are of course welcome to determine their own Case, t-statistic, F-statistic, and observations, but it is easier to have the model determine these quantities.
 #' @param obs number of observations
-#' @param fstat F-statistic of the joint test that \code{l.y = l.x1 + l.x2 +...+l.xk = 0}
-#' @param tstat t-static of the one-sided 
+#' @param fstat F-statistic of the joint test that variables in levels (except the lagged dependent variable) are equal to zero: \code{l.y = l.x1 + l.x2 +...+l.xk = 0}
+#' @param tstat t-statistic of the lagged dependent variable
 #' @param case specify certain restrictions on the constant and trend terms, since critical values differ by case. Case I: no intercept or trend, Case II: restricted intercept, no trend, Case III: unrestricted intercept with no trend, Case IV: unrestricted intercept and restricted trend, Case V: unrestricted intercept and trend. Case III is most frequently specified
-#' @param k number of regressors appearing in levels in the estimated  model
-#' @param digits number of digits to present in output (rarely used)
-#' @param object.out output results (rarely used)
+#' @param k number of regressors appearing in levels in the estimated model
+#' @param digits the number of digits to round to when showing output. We recommend three.
+#' @param object.out if \code{TRUE}, and \code{dynardl.auto.correlated} is assigned to an object, the AIC, BIC, and results will be stored for the user's convenience.
 #' @details
-#' pssbounds performs post-estimation cointegration testing using the bounds testing procedure from Pesaran, Shin, and Smith (2001). Since test statistics vary based on the number of \code{k} regressors, length of the series, these are required to specify, in addition to F- and t-statistics.
+#' pssbounds performs post-estimation cointegration testing using the bounds testing procedure from Pesaran, Shin, and Smith (2001). Since test statistics vary based on the number of \code{k} regressors, length of the series, these are required, in addition to F- and t-statistics.
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords cointegration
+#' @examples
+#' # Using the ineq data from dynamac
+#' # We can get all the values by hand
+#' ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'         lags = list("concern" = 1, "incshare10" = 1),
+#'         diffs = c("incshare10", "urate"), 
+#'         lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = FALSE)
+#' summary(ardl.model)
+#' pssbounds(obs = 47, fstat = 7.01578, tstat = -3.223, case = 3, k = 1)
+#' 
+#' # Or just pass a dynardl model.
+#' pssbounds(ardl.model)
+#' @export
+
 pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, case = NULL, k = NULL, digits = 3, object.out = FALSE) {
 	# If the model wasn't error correcting, we tell the user
 	if(!(identical(data, list()))) {
@@ -2800,42 +3127,39 @@ pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, cas
 ##########################################
 # -----(8) dynardl.auto.correlated ------#
 ##########################################
-#' Perform post-estimation tests for white-noise residuals
+#' Run a variety of autocorrelation tests on the residuals from a \code{dynardl} model. 
 #' @param x a \code{dynardl} model
-#' @param bg.type a character string for the type of Breusch-Godfrey test to
-#' run. The default is \code{Chisq}: the Chisq test statistic. The other option
-#' is \code{F}: the F-test statistic. 
-#' @param digits number of digits to round when showing output (rarely used).
-#' We recommend three.
-#' @param order test for up to p'th order of AR(p) autocorrelation when
-#' executing the Breusch-Godfrey test
-#' @param object.out if \code{TRUE}, and \code{dynardl.auto.correlated} is
-#' assigned to an object, the AIC, BIC, and results will be stored for the
-#' user's convenience.
-#' @return The results of autocorrelation tests. 
+#' @param bg.type a character string for the type of Breusch-Godfrey test to run. The default is \code{Chisq}: the Chisq test statistic. The other option is \code{F}: the F-test statistic. 
+#' @param digits the number of digits to round to when showing output. We recommend three.
+#' @param order the maximum order of serial autocorrelation to test when executing the Breusch-Godfrey test.
+#' @param object.out if \code{TRUE}, and \code{dynardl.auto.correlated} is assigned to an object, the AIC, BIC, and results will be stored for the user's convenience.
+#' @return The results of autocorrelation tests.
 #' @details
-#' \code{dynardl.auto.correlated} performs post-estimation diagnostics designed
-#' to help users with model specification (as an aside, this is also why
-#' \code{dynardl} has a \code{simulate = FALSE} argument; users can ensure the
-#' model is white noise residuals before estimating a potentially
-#' time-intensive simulation). These include the Breusch-Godfrey and
-#' Durbin-Watson tests for autocorrelation, Shapiro-Wilk test for normality,
-#' and various information criteria. The output reminds the user of the null
-#' hypotheses for the autocorrelation tests.
+#' This is a simple and convenient way to test whether the residuals from the \code{dynardl} model are white noise. As an aside, this is also why \code{dynardl} has a \code{simulate = FALSE} argument: users can ensure the model is white noise residuals before estimating a potentially time-intensive simulation. The output also reminds the user of the null hypotheses for the autocorrelation tests.
+#' @importFrom lmtest bgtest
+#' @importFrom stats shapiro.test
 #' @author Soren Jordan and Andrew Q. Philips
-#' @keywords post-estimation utilities
+#' @keywords utilities
+#' @examples
+#' # Using the ineq data from dynamac
+#' ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        diffs = c("incshare10", "urate"), 
+#'        lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = FALSE)
+#' dynardl.auto.correlated(ardl.model)
+#' @export
 
-# @param dw.alt specifies hypotheses of Durbin-Watson test. \code{"greater"} tests H0 of \eqn{\rho=0} against Ha of \eqn{\rho>0}, \code{"less"} tests H0 of \eqn{\rho=0} against Ha of \eqn{\rho<0}, and \code{"two.sided"} tests H0 of \eqn{\rho=0} against \eqn{\rho!=0}
 dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NULL, object.out = FALSE) { # dw.alt = "greater",
 	out <- list()
 	if("model" %in% names(x)) {
 		if(!(is.null(order))) {
-			out$bg <- bgtest(res$model, type = bg.type, order = order)
+			out$bg <- bgtest(x$model, type = bg.type, order = order)
 		} else {
-			out$bg <- bgtest(res$model, type = bg.type)
+			out$bg <- bgtest(x$model, type = bg.type)
 		}
-		# out$dw <- dwtest(res$model, alternative = dw.alt)
-		out$sw <- shapiro.test(res$model$residuals)
+		# out$dw <- dwtest(x$model, alternative = dw.alt)
+		out$sw <- shapiro.test(x$model$residuals)
 		out$AIC <- round(AIC(x$model), digits = digits)
 		out$BIC <- round(BIC(x$model), digits = digits)
 		out$logLik <- round(logLik(x$model), digits = digits)
@@ -2875,7 +3199,7 @@ dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NU
 			paste("Log-likelihood:", round(out$logLik, digits = digits), sep = " "), "\n",
 			paste("AIC:", round(out$AIC, digits = digits), sep = " "), "\n",
 			paste("BIC:", round(out$BIC, digits = digits), sep = " "), "\n",
-			paste("Note: AIC and BIC calculated with k =", x$model$rank, sep = " ")
+			paste("Note: AIC and BIC calculated with k =", x$model$rank, "on T =", length(x$model$residuals), "observations.", sep = " ")
 			)
 			if(object.out == TRUE) {
 				out
@@ -2885,6 +3209,150 @@ dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NU
 		stop("Provide a dynardl() object to test auto-correlation of residuals.")
 	}	
 }
+
+##################################
+# -----(9) dynardl.effects ------#
+##################################
+
+dynardl.effects <- function(x, tol = 0.025, period = NULL, x.lag = NULL, object.out = FALSE) {
+	if(x$model$simulate == FALSE) {
+		stop("dynardl() object does not include simulation to graph.")
+	}
+	shocktime <- x$simulation$shocktime[1]
+	changes <- abs(dshift(x$simulation$mean))
+	dists <- abs.dists <- rep(NA, length(changes))
+	innov <- abs.innov <- rep(NA, length(changes))
+	triangles <- abs.triangles <- rep(NA, length(changes))
+	triangles.rectangles <- abs.triangles.rectangles <- rep(NA, length(changes))
+	sig.changes <- rep(NA, length(changes))
+	demeaned <- x$simulation$mean - x$model$ymean
+	for(i in 2:length(sig.changes)) {
+		sig.changes[i] <- ifelse(changes[i] >= tol*(max(x$simulation$mean)-min(x$simulation$mean)), TRUE, FALSE) # is the new change more or less than (tolerance)% of the total?
+	}
+	for(i in 2:length(triangles)) {
+		if((demeaned[i] > 0) & (demeaned[i-1] > 0)) { # If both Y values are positive
+			abs.dists[i] <- dists[i] <- demeaned[i]	 # Vertical measure: just the value of the demeaned series (the spike)
+			abs.innov[i] <- innov[i] <- changes[i] # Unit over unit change in the spike level
+			abs.triangles[i] <- triangles[i] <- changes[i]*0.5 # 1/2*base(always 1 unit) * height: change in value t-1 to t
+			abs.triangles.rectangles[i] <- triangles.rectangles[i] <- triangles[i] + min(demeaned[i], demeaned[i-1]) # It's the trianlge plus the rectangle underneath it: l x w (w = 1, height is the lesser of the two verticals from the mean)
+		} else {
+			if((demeaned[i] < 0) & (demeaned[i-1] < 0)) {	# If both Y values are negative
+				dists[i] <- demeaned[i] # Vertical measure: just the value of the demeaned series (the spike)
+				abs.dists[i] <- abs(dists[i]) # Don't make it negative, as it's counting ``total effect''
+				innov[i] <- (-1)*changes[i] # Negative change from last period
+				abs.innov[i] <- abs(innov[i]) # Total change from previous 
+				triangles[i] <- (-1)*changes[i]*0.5 # 1/2*base(always 1 unit) * height
+				abs.triangles[i] <- abs(triangles[i])
+				triangles.rectangles[i] <- triangles[i] + max(demeaned[i], demeaned[i-1])	 # The triangle plus the rectangle underneath which is the GREATER (less negative) of the two	
+				abs.triangles.rectangles[i] <- abs(triangles.rectangles[i])		
+			} else {
+				# X runs one unit, total change is changes[i], so slope of full line is changes[i]
+				#  Chunk up the line by reducing the slope into the parts of changes that are above and below changes
+				if(demeaned[i] < 0) { # If the second observation is below zero
+					cross.over <- (demeaned[i-1]/changes[i])
+					pos.triangle <- demeaned[i-1]*cross.over*0.5
+					neg.triangle <- demeaned[i]*(1-cross.over)*0.5
+					innov[i] <- dists[i] <- demeaned[i-1] + demeaned[i] # The net (positive/negative) of the two spikes
+					abs.innov[i] <- abs.dists[i] <- demeaned[i-1] + abs(demeaned[i]) # Make the second observation positive!
+					triangles[i] <- triangles.rectangles[i] <- pos.triangle + neg.triangle # No rectangles below: crossover
+					abs.triangles[i] <- abs.triangles.rectangles[i] <- pos.triangle + abs(neg.triangle)
+				} else {
+					cross.over <- (demeaned[i]/changes[i])
+					pos.triangle <- demeaned[i]*cross.over*0.5
+					neg.triangle <- demeaned[i-1]*(1-cross.over)*0.5
+					innov[i] <- dists[i] <- demeaned[i-1] + demeaned[i] # The net (positive/negative) of the two spikes
+					abs.innov[i] <- abs.dists[i] <- abs(demeaned[i-1]) + demeaned[i] # Make the first observation positive!
+					triangles[i] <- triangles.rectangles[i] <- pos.triangle + neg.triangle # No rectangles below: crossover
+					abs.triangles[i] <- abs.triangles.rectangles[i] <- pos.triangle + abs(neg.triangle)	
+				}
+			}
+		}
+	}
+	areas <- data.frame(x$simulation$mean, demeaned, dists, abs.dists, innov, abs.innov, triangles, abs.triangles, triangles.rectangles, abs.triangles.rectangles)
+	names(areas) <- c("Y.sim.mean", "Y.sim.demeaned", "spike.lengths", "abs.spike.lengths", "innovations", "abs.innovations",
+		"innovation.area", "abs.innovation.area", "total.area", "abs.total.area")
+	t.spikes <- a.t.spikes <- t.innov <- a.t.innov <- t.trian <- a.t.trian <- t.trirect <- a.t.trirect <- NULL
+	# Now actually calculate 
+	# When's the last significant change (according to tolerance?). Used for testing
+	which.to.add <- seq(1, length(demeaned), 1)
+	last.sign.period <- max(subset(which.to.add, sig.changes == TRUE))
+
+	if(is.null(period)) { # If we're not calculating based on a period
+		last.period <- last.sign.period
+		t.spikes <- sum(dists[shocktime:last.period])
+		a.t.spikes <- sum(abs.dists[shocktime:last.period])
+		t.innov <- sum(innov[shocktime:last.period])
+		a.t.innov <- sum(abs.innov[shocktime:last.period])		
+		t.trian <- sum(triangles[shocktime:last.period])
+		a.t.trian <- sum(abs.triangles[shocktime:last.period])
+		t.trirect <- sum(triangles.rectangles[shocktime:last.period])
+		a.t.trirect <- sum(abs.triangles.rectangles[shocktime:last.period])
+	} else { # If we ARE calculating based on a period
+		last.period <- shocktime + period
+		if(last.period > max(x$simulation$time)) { # If the user wants more periods than are available ...
+			last.period <- max(x$simulation$time)
+			warning(paste(paste("Length of effect (period) requested exceeds simulation length. Effect calculated for"), paste(last.period - shocktime), paste("periods."), sep = " "))	
+		}
+		if(last.period < last.sign.period) { # If the user wants a period but Y could still be responding ...
+			warning(paste(paste("Y might still be changing after"), paste(period), paste("period(s). Consider lengthening the number of periods included in calculated effect."), sep = " "))	
+		}
+		t.spikes <- sum(dists[shocktime:last.period])
+		a.t.spikes <- sum(abs.dists[shocktime:last.period])
+		t.innov <- sum(innov[shocktime:last.period])
+		a.t.innov <- sum(abs.innov[shocktime:last.period])
+		t.trian <- sum(triangles[shocktime:last.period])
+		a.t.trian <- sum(abs.triangles[shocktime:last.period])
+		t.trirect <- sum(triangles.rectangles[shocktime:last.period])
+		a.t.trirect <- sum(abs.triangles.rectangles[shocktime:last.period])
+	}
+	# Now issue a few warnings
+	if(last.sign.period == max(which.to.add)) { # If the simulation isn't long enough, potentially
+		warning(paste(paste("Y might still be changing at the end of the simulation. Consider lengthening the simulation beyond range ="), paste(max(which.to.add)), paste("periods in dynardl()."), sep = " "))
+	}
+	if(!(min(x$simulation$ul75) < max(x$simulation$ll75))) { # If there is overlap in the significant regions ...
+		warning(paste("Use caution, as the effect of X on Y might not be meaningfully different from 0: upper 75% interval overlaps with lower 75% interval."))
+	}
+	if(is.null(x.lag)) {
+		immediate <- demeaned[shocktime] - demeaned[shocktime - 1]
+	} else {
+		immediate <- demeaned[shocktime + x.lag] - demeaned[shocktime + x.lag - 1]
+	}
+	quantities <- data.frame(immediate, t.spikes, a.t.spikes, t.innov, a.t.innov, t.trian, a.t.trian, t.trirect, a.t.trirect)
+	names(quantities) <- c("immediate.effect", "sum.spike.lengths", "sum.abs.spike.lengths", "sum.innovations", "sum.abs.innovations",
+		"sum.innovation.area", "sum.abs.innovation.area", "sum.total.area", "sum.abs.total.area")
+	out <- list(areas, quantities)
+	names(out) <- c("areas", "quantities")
+	
+	# Output
+	flush.console()
+	cat("\n",
+		"------------------------------------------------------", "\n")
+		if(is.null(x.lag)) {
+			cat(paste(" Immediate (shock period) effect:", round(out$quantities$immediate.effect, digits = 3), sep = " "), "\n")
+		} else {
+			cat(paste(" Immediate (shock period) effect:", round(out$quantities$immediate.effect, digits = 3), "adjusted by", x.lag, "period(s) for the lag of X.", sep = " "), "\n")
+		}
+		cat(
+		" ------------------------------------------------------", "\n",
+		paste("Net sum of spikes:", round(out$quantities$sum.spike.lengths, digits = 3), sep = " "), "\n",
+		paste("Absolute sum of spikes:", round(out$quantities$sum.abs.spike.lengths, digits = 3), sep = " "), "\n",
+		paste("Net sum of innovations:", round(out$quantities$sum.innovations, digits = 3), sep = " "), "\n",
+		paste("Absolute sum of innovations:", round(out$quantities$sum.abs.innovations, digits = 3), sep = " "), "\n",
+		paste("Net area of innovations:", round(out$quantities$sum.innovation.area, digits = 3), sep = " "), "\n",
+		paste("Absolute area of innovations:", round(out$quantities$sum.abs.innovation.area, digits = 3), sep = " "), "\n",
+		paste("Net sum of area under curve:", round(out$quantities$sum.total.area, digits = 3), sep = " "), "\n",
+		paste("Absolute sum of area under curve:", round(out$quantities$sum.abs.total.area, digits = 3), sep = " "), "\n",
+		paste("Calculated on", paste(last.period - shocktime), paste("periods."), sep = " "), "\n",
+		"------------------------------------------------------", "\n")
+	if(object.out == TRUE) {
+		out
+	}	
+}
+
+
+
+
+
 
 
 

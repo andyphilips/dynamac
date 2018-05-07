@@ -2,25 +2,27 @@
 % Please edit documentation in R/dynamac.R
 \name{dshift}
 \alias{dshift}
-\title{Take first-difference transformation of a series}
+\title{Take first difference of a series.}
 \usage{
 dshift(x)
 }
 \arguments{
-\item{x}{the series to be first-differenced}
+\item{x}{a series to be differenced}
 }
 \value{
-the first-differenced series
+the differenced series
 }
 \description{
-Take first-difference transformation of a series
+Take first difference of a series.
 }
 \details{
-\code{dshift} assumes that the series are ordered, that there is no missing
-data, and that the time intervals are even.
+\code{dshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
 }
 \examples{
-dshift(rnorm(20))
+x.var <- seq(0, 50, 5)
+d.x.var <- dshift(x.var)
+head(x.var)
+head(d.x.var)
 }
 \author{
 Soren Jordan and Andrew Q. Philips
