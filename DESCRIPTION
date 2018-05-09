@@ -1,14 +1,21 @@
 Package: dynamac
-Title: Dynamic simulation and testing for single-equation ARDL models
-Version: 0.1.3.9000
+Title: Dynamic Simulation and Testing for Single-Equation ARDL Models
+Version: 0.1.4
 Authors@R: c(person("Soren", "Jordan", email = "sorenjordanpols@gmail.com", role = c("aut", "cre","cph")), person("Andrew Q.", "Philips", email = "andrew.philips@colorado.edu", role = c("aut")))
 Maintainer: Soren Jordan <sorenjordanpols@gmail.com>
-Description:  While autoregressive distributed lag models allow for extremely fexible dynamics, interpreting substantive significance of complex lag structures remains difficult. This package is designed to assist users in dynamically simulating and plotting the results of various autoregressive distributed lag models. It also contains post-estimation diagnostics, including a test for cointegration when estimating the error-correction variant of the autoregressive distributed lag model.
+Description: While autoregressive distributed lag models allow for extremely flexible dynamics, interpreting substantive significance of complex lag structures remains difficult. This package is designed to assist users in dynamically simulating and plotting the results of various autoregressive distributed lag models. It also contains post-estimation diagnostics, including a test for cointegration when estimating the error-correction variant of the autoregressive distributed lag model (Pesaran, Shin, and Smith 2001 <doi:10.1002/jae.616>).
 Imports: MASS, lmtest
+Suggests: urca, knitr, rmarkdown
 Depends: R (>= 3.0.1)
-License: GPL (>=2)
+License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true
-VignetteBuilder: knitr
-BuildVignettes: true
+BuildManual: yes
 RoxygenNote: 6.0.1
+VignetteBuilder: knitr
+NeedsCompilation: no
+Packaged: 2018-05-08 15:39:23 UTC; scj0014
+Author: Soren Jordan [aut, cre, cph],
+  Andrew Q. Philips [aut]
+Repository: CRAN
+Date/Publication: 2018-05-09 08:45:05 UTC
