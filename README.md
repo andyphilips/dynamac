@@ -8,7 +8,7 @@ install.packages("dynamac")
 library(dynamac)
 ```
 
-Alternatively, you can use the `devtools` package:
+Alternatively, you can use the `devtools` package to load directly from GitHub:
 ```
 library(devtools)
 devtools::install_github("andyphilips/dynamac")
