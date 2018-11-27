@@ -1,9 +1,11 @@
 # dynamac
-[![Build Status](https://travis-ci.com/andyphilips/dynamac.svg?branch=master)](https://travis-ci.com/andyphilips/dynamac)  ![](https://www.r-pkg.org/badges/version/dynamac)
 
+## Description
 Dynamic simulation and testing for single-equation ARDL models in R and Stata. Link to the webpage can be found [here](https://andyphilips.github.io/dynamac/).
 
 ## Installation (R)
+[![Build Status](https://travis-ci.com/andyphilips/dynamac.svg?branch=master)](https://travis-ci.com/andyphilips/dynamac)  ![](https://www.r-pkg.org/badges/version/dynamac)
+
 `dynamac` in R can easily be installed from its CRAN repository:
 ```
 install.packages("dynamac")
