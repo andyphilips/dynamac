@@ -1,4 +1,6 @@
 # dynamac
+[![Build Status](https://travis-ci.com/andyphilips/dynamac.svg?branch=master)](https://travis-ci.com/andyphilips/dynamac)
+
 Dynamic simulation and testing for single-equation ARDL models in R and Stata. Link to the webpage can be found [here](https://andyphilips.github.io/dynamac/).
 
 ## Installation (R)
