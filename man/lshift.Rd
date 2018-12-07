@@ -23,10 +23,10 @@ Take lag transformation of a series.
 \examples{
 x.var <- runif(50)
 l.1.x.var <- lshift(x.var, 1)
-l.1.x.var <- lshift(x.var, 2)
+l.2.x.var <- lshift(x.var, 2)
 head(x.var)
 head(l.1.x.var)
-head(l.1.x.var)
+head(l.2.x.var)
 }
 \author{
 Soren Jordan and Andrew Q. Philips

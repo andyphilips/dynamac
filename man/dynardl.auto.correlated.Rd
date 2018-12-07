@@ -4,8 +4,8 @@
 \alias{dynardl.auto.correlated}
 \title{Run a variety of autocorrelation tests on the residuals from a \code{dynardl} model.}
 \usage{
-dynardl.auto.correlated(x, bg.type = "Chisq", digits = 3, order = NULL,
-  object.out = FALSE)
+dynardl.auto.correlated(x, bg.type = "Chisq", digits = 3,
+  order = NULL, object.out = FALSE)
 }
 \arguments{
 \item{x}{a \code{dynardl} model}
@@ -25,7 +25,7 @@ The results of autocorrelation tests.
 Run a variety of autocorrelation tests on the residuals from a \code{dynardl} model.
 }
 \details{
-This is a simple and convenient way to test whether the residuals from the \code{dynardl} model are white noise. As an aside, this is also why \code{dynardl} has a \code{simulate = FALSE} argument: users can ensure the model is white noise residuals before estimating a potentially time-intensive simulation. The output also reminds the user of the null hypotheses for the autocorrelation tests.
+This is a simple and convenient way to test whether the residuals from the \code{dynardl} model are white noise. As an aside, this is also why \code{dynardl} has a \code{simulate = FALSE} argument: users can ensure the model has white noise residuals before estimating a potentially time-intensive simulation. The output also reminds the user of the null hypotheses for the autocorrelation tests.
 }
 \examples{
 # Using the ineq data from dynamac

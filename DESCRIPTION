@@ -1,21 +1,21 @@
 Package: dynamac
 Title: Dynamic Simulation and Testing for Single-Equation ARDL Models
-Version: 0.1.4
+Version: 0.1.5
 Authors@R: c(person("Soren", "Jordan", email = "sorenjordanpols@gmail.com", role = c("aut", "cre","cph")), person("Andrew Q.", "Philips", email = "andrew.philips@colorado.edu", role = c("aut")))
 Maintainer: Soren Jordan <sorenjordanpols@gmail.com>
-Description: While autoregressive distributed lag models allow for extremely flexible dynamics, interpreting substantive significance of complex lag structures remains difficult. This package is designed to assist users in dynamically simulating and plotting the results of various autoregressive distributed lag models. It also contains post-estimation diagnostics, including a test for cointegration when estimating the error-correction variant of the autoregressive distributed lag model (Pesaran, Shin, and Smith 2001 <doi:10.1002/jae.616>).
+Description: While autoregressive distributed lag (ARDL) models allow for extremely flexible dynamics, interpreting substantive significance of complex lag structures remains difficult. This package is designed to assist users in dynamically simulating and plotting the results of various ARDL models. It also contains post-estimation diagnostics, including a test for cointegration when estimating the error-correction variant of the autoregressive distributed lag model (Pesaran, Shin, and Smith 2001 <doi:10.1002/jae.616>).
+URL: https://github.com/andyphilips/dynamac/
+BugReports: https://github.com/andyphilips/dynamac/issues
 Imports: MASS, lmtest
-Suggests: urca, knitr, rmarkdown
+Suggests: urca, knitr, rmarkdown, testthat
 Depends: R (>= 3.0.1)
-License: GPL (>= 2)
+License: GPL (>=2)
 Encoding: UTF-8
 LazyData: true
 BuildManual: yes
-RoxygenNote: 6.0.1
+RoxygenNote: 6.1.1
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2018-05-08 15:39:23 UTC; scj0014
+Packaged: 2018-12-07 21:05:32 UTC; scj0014
 Author: Soren Jordan [aut, cre, cph],
   Andrew Q. Philips [aut]
-Repository: CRAN
-Date/Publication: 2018-05-09 08:45:05 UTC

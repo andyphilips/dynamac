@@ -24,6 +24,6 @@ data(ineq)
 \description{
 A dataset from: Wright, Graham. 2017. "The political
 implications of American concerns about economic inequality."
-Political Behavior: 1-23. Online first.
+Political Behavior 40(2): 321-346.
 }
 \keyword{datasets}

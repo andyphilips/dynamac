@@ -1,20 +1,34 @@
-# version 0.1.4.9001
-# 5/7/2018
+# version 0.1.5
+# 12/7/2018
 # Authors: Soren Jordan, Andrew Q. Philips
 
-# Corrections since previous version: typos in vignette and documentation
+# Corrections since previous version:
+#   Defined ``ARDL'' in the DESCRIPTION
+#   Fixed the incorrect naming of the lshift help file
+#   Changed res$y to help with autocorrelation estimation
+#   Allow QOI to be mean or median
+#   Added informative messages to dynardl.auto.correlated
+#   Scrubbed references to graph. Now everything refers to plot.
+#   Removed calls to plot in the dynardl() function
+#   Assigned dynardl() objects to class dynardl(), so summary methods can be used to point to correct object
+#   Added informative warnings about vectors for levels/diffs
+#   Permanent citation of Wright (2017)
+#   Renamed changes option in plot functions
+#   Added French dataset for new examples
+
 
 # TO DO: 
 #   Simulate and test AUC quantities (long-term)
-#   Long-term citation of Wright (2017)
 #   Future release: permanent shifts as opposed to shocks?
+#   Add more autocorrelation tests
+#	Impulse responses (period over period changes)
 
 # Datasets exported: 
 #' Data on public concern about economic inequality
 #'
 #' A dataset from: Wright, Graham. 2017. "The political
 #' implications of American concerns about economic inequality."
-#' Political Behavior: 1-23. Online first. 
+#' Political Behavior 40(2): 321-346. 
 #'
 #' @format A data frame with 49 rows and 9 variables:
 #' \describe{
@@ -62,7 +76,25 @@ NULL
 #' @name supreme.sup
 NULL
 
- 
+#' Data on French Energy Consumption and GDP
+#'
+#' Data on GDP are from World Bank World Development Indicators. Data
+#' on energy consumption are from the PB Statistical Review of World
+#' Energy (June 2018).
+#'
+#' @format A data frame with 53 rows and 4 variables:
+#' \describe{
+#'   \item{country}{Country}
+#'   \item{year}{Year}
+#'   \item{lnGDP_cons2010USD}{ln(GDP), constant 2010 US dollars}
+#'   \item{lnenergy}{ln(energy consumption), mill. tons oil equiv.}
+#' }
+#' @docType data
+#' @keywords datasets
+#' @usage data(france.data)
+#' @name france.data
+NULL
+
 ## Dependencies: 	MASS (for multivariate normal draws)
 #					lmtest (for autocorrelation tests)
 #
@@ -86,30 +118,29 @@ NULL
 #	lagdiffs = [list()]					list of variables to lagdiff, like lagdiffs = list("x" = c(1) ...)
 # 	levels = [c()]						vector of variables in levels, like c("x", "z" ...)
 #	ec = [FALSE] 						should model be error correcting? (i.e. differenced y or not)
-#	range = [20] 						range of simulation
-#	sig = [95] 							significance for simulations
-#	time = [10]							time to shock variable
-#	shockvar = [list()]					variable to be shocked, like "x"
-#	shockval = [sd(data[[shockvar]])]	amount to shock variable
-#	sims = [1000]						number of simulations to run
-#	forceset = [NULL]					list of variables to be forced to a certain value 
-#	burnin = [20]						number of time periods to throw away before beginning reported simulation
-#	expectedval = [FALSE]				expected value of simulation (averaged errors) or predicted value 
 #	trend = [FALSE]						include a linear trend 
 #	constant = [TRUE]					include a constant
-#	graph = [FALSE]						graph the results
-#	rarea = [TRUE]						if graphed, area graph or spike graph?
 #	modelout = [FALSE]					print model summary	
-#	simulate = [TRUE]					simulate model, or just estimate?
+#	simulate = [FALSE]					simulate model, or just estimate?
+#	shockvar = [list()]					variable to be shocked, like "x"
+#	shockval = [sd(data[[shockvar]])]	amount to shock variable
+#	time = [10]							time to shock variable
+#	qoi = ["mean"]						summarize the response with the mean or the median?
+#	forceset = [NULL]					list of variables to be forced to a certain value 
+#	range = [20] 						range of simulation
+#	burnin = [20]						number of time periods to throw away before beginning reported simulation
+#	sims = [1000]						number of simulations to run
+#	sig = [95] 							significance for simulations
+#	expectedval = [FALSE]				expected value of simulation (averaged errors) or predicted value 
 #
-# (5) area.simulation.graph()
+# (5) area.simulation.plot()
 #	x = [no default] 					dynardl() object containing a simulation and parameters
-#	changes = [FALSE]					should the plot be in levels of Y or changes from mean of Y?		
+#	response = [levels]					should the plot be in levels of Y (levels) or changes from mean of Y (mean.changes)?	
 #	bw = [FALSE]						should the plot be in black and white?				
 #
-# (6) spike.simulation.graph()
+# (6) spike.simulation.plot()
 #	x = [no default] 					dynardl() object containing a simulation and parameters
-#	changes = [FALSE]					should the plot be in levels of Y or changes from mean of Y?						
+#	response = [levels]					should the plot be in levels of Y (levels) or changes from mean of Y (mean.changes)?	
 #	bw = [FALSE]						should the plot be in black and white?
 #
 # (7) pssbounds()
@@ -129,6 +160,15 @@ NULL
 #	order = [NULL]						the order of autocorrelation to test in bgtest
 #	object.out = [FALSE]					do you want to print all of this into an object?
 
+
+# One unseen function. Applies a summary method for class ``dynardl'' so that summary(x) can be used, 
+#  rather than summary(x$model)
+
+summary.dynardl <- function(x) {
+	stopifnot(inherits(x, "dynardl"))
+	summary(x$model)
+}
+
 ##########################################
 # ------------(1) lshift ----------------#
 ##########################################
@@ -144,10 +184,10 @@ NULL
 #' @examples
 #' x.var <- runif(50)
 #' l.1.x.var <- lshift(x.var, 1)
-#' l.1.x.var <- lshift(x.var, 2)
+#' l.2.x.var <- lshift(x.var, 2)
 #' head(x.var)
 #' head(l.1.x.var)
-#' head(l.1.x.var)
+#' head(l.2.x.var)
 #' @export
 
 lshift <- function(x, l){
@@ -213,8 +253,9 @@ ldshift <- function(x, l){
 ##########################################
 #' Estimate and Simulate ARDL Model
 #' @description
-#' Estimate autoregressive distributed lag model, simulate interesting values,
-#' and plot predictions
+#' Estimate autoregressive distributed lag model and simulate interesting values (if desired)
+#' @param formula a symbolic description of the model to be estimated. ARDL
+#' models are estimated using linear regression.
 #' @param data an optional data frame or list containing the the variables in
 #' the model.
 #' @param lags a list of variables and their corresponding lags to be
@@ -225,50 +266,52 @@ ldshift <- function(x, l){
 #' @param ec estimate model in error-correction form, (i.e., \code{y} appears
 #' in first-differences). By default, \code{ec} is set to \code{FALSE},
 #' meaning \code{y} will appear in levels. 
-#' @param range the range of the simulation to be conducted
-#' @param sig the significance level (1 - \code{p}) that the user wants for
-#' the simulations. The default level is 95\% significance (\code{sig = 95}).
-#' @param time the time period in the simulation for the variable to be
-#' shocked.
+#' @param trend include a linear time trend. The default is FALSE.
+#' @param constant include a constant. The default is TRUE.
+#' @param modelout print the regression estimates in the console
+#' @param simulate simulate the reponse. Otherwise, just the regression model
+#' will be estimated. If \code{simulate = FALSE}, options \code{shockvar}, \code{shockval}, 
+#' \code{time}, \code{qoi}, \code{forceset}, \code{range}, \code{burnin}, \code{sims}, 
+#' \code{sig}, and \code{expectedval}, are ignored. The default is FALSE. 
 #' @param shockvar the variable to be shocked. There is no default.
 #' @param shockval the amount by which the \code{shockvar} should be shocked.
 #' The default is one standard deviation of the shocked variable.
-#' @param sims the number of simulations to use in creating the quantities of
-#' interest. The default is 1000.
+#' @param time the time period in the simulation for the variable to be
+#' shocked.
+#' @param qoi summarize the response of the dependent variable with the mean or the median.
+#' Although the default is \code{mean}, if there is underlying skew in the 
+#' distribution, it might be better summarized by \code{median}.
 #' @param forceset by default, in the simulations, variables in levels will be
 #' set to their means; variables in differences will be set to 0.
 #' Alternatively, users can set any variable in the model to a different value
-#' using a list in \code{forceset}.
+#' using a list in \code{forceset}. These values can be any user-defined value, 
+#' including means, medians, percentiles, or other values of interest. 
+#' @param range the range of the simulation to be conducted
 #' @param burnin the number of time periods to disregard before recording the
 #' values. These do not include the \code{range}; in other words, they take
 #' place before the \code{range} specified above. Users can increase the
 #' number of \code{burnin} periods, but probably should not decrease them. The
 #' default is 20.
+#' @param sims the number of simulations to use in creating the quantities of
+#' interest (the response of the dependent variable). The default is 1000.
+#' @param sig the significance level (1 - \code{p}) that the user wants for
+#' the simulations. The default level is 95\% significance (\code{sig = 95})
 #' @param expectedval if this is \code{TRUE}, the simulation will record the
 #' expected values of across the \code{sims} by averaging errors. We recommend
 #' setting it to \code{FALSE}, since expected values do not account for
 #' stochastic error present in the model itself.
-#' @param trend include a linear time trend. The default is FALSE.
-#' @param constant include a constant. The default is TRUE.
-#' @param graph create a plot of the simulated response. The default is FALSE.
-#' @param rarea if \code{graph = TRUE}, create an area plot. If \code{graph =
-#' TRUE} and \code{rarea = FALSE}, a spike plot will be created.
-#' @param modelout print the regression estimates in the console
-#' @param simulate simulate the reponse. Otherwise, just the regression model
-#' will be estimated.
 #' @return \code{dynardl} should always return an estimated model. It may or
 #' may not be simulated, according to the user. But the relevant regression
 #' output, model residuals (which can be tested for autocorrelation), and
 #' simulated response (if created) are stored in a list if the model is
 #' assigned to an object.
 #' @details
-#' Estimate an auto-regressive distributed lag model. Moreover, provide a
-#' graphical interpretation of the results by simulating the response of 
+#' Estimate an auto-regressive distributed lag model. Moreover, enable a
+#' graphical interpretation of the results (through \code{area.simulation.plot} or
+#' \code{spike.simulation.plot}) by simulating the response of 
 #' the dependent variable to shocks in one of the regressors.
-#' @param formula a symbolic description of the model to be estimated. ARDL
-#' models are estimated using linear regression.
 #' @importFrom graphics lines plot points polygon segments
-#' @importFrom stats AIC BIC as.formula coef lm logLik quantile rchisq rnorm sd sigma vcov
+#' @importFrom stats AIC BIC as.formula coef lm logLik quantile rchisq rnorm sd sigma vcov median
 #' @importFrom utils head flush.console head setTxtProgressBar txtProgressBar
 #' @importFrom MASS mvrnorm
 #' @author Soren Jordan and Andrew Q. Philips
@@ -279,7 +322,7 @@ ldshift <- function(x, l){
 #'        lags = list("concern" = 1, "incshare10" = 1),
 #'        diffs = c("incshare10", "urate"), 
 #'        ec = TRUE, simulate = FALSE)
-#' summary(ardl.model$model)
+#' summary(ardl.model)
 #' 
 #' # Adding a lagged difference of the dependent variable
 #' ardl.model.2 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
@@ -287,16 +330,18 @@ ldshift <- function(x, l){
 #'        diffs = c("incshare10", "urate"), 
 #'        lagdiffs = list("concern" = 1),
 #'        ec = TRUE, simulate = FALSE)
-#' summary(ardl.model.2$model)
+#' summary(ardl.model.2)
 #'
-#' # Does not work: levels must appear as a vector
+#' # Does not work: levels and diffs must appear as a vector
+#' \donttest{
 #' ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
 #'        lags = list("concern" = 1, "incshare10" = 1),
 #'        levels = list("urate" = 1),
-#'        diffs = c("incshare10", "urate"), 
+#'        diffs = list("incshare10" = 1, "urate" = 1), 
 #'        lagdiffs = list("concern" = 1),
 #'        ec = TRUE, simulate = FALSE)
-#' 
+#' }
+#'
 #' ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
 #'        lags = list("concern" = 1, "incshare10" = 1),
 #'        levels = c("urate"),
@@ -312,21 +357,20 @@ dynardl <- function(formula,
 								lagdiffs = list(),
 								levels = list(),
 								ec = FALSE,
-								range = 20,
-								sig = 95,
-								time = 10,
-								shockvar = list(),
-								shockval = sd(data[[shockvar]]),
-								sims = 1000,
-								forceset = NULL,
-								burnin = 20,
-								expectedval = FALSE,
 								trend = FALSE,
 								constant = TRUE,
-								graph = FALSE,
-								rarea = TRUE,
 								modelout = FALSE,
-								simulate = TRUE) {
+								simulate = FALSE,
+								shockvar = list(),
+								shockval = sd(data[[shockvar]]),
+								time = 10,
+								qoi = "mean",	
+								forceset = NULL,		
+								range = 20,
+								burnin = 20,
+								sims = 1000,
+								sig = 95,
+								expectedval = FALSE) {
 	#################
 	# Data controls #
 	#################
@@ -344,6 +388,10 @@ dynardl <- function(formula,
 	# Difference controls #
 	#######################
 	if(length(diffs)) {
+		if(isTRUE(is.list(diffs))) {
+			stop("Declare differences as a vector of variables to be first-differenced (i.e. diffs = c('X1', ...))")
+		}
+		else {
 	#	if(!is.list(diffs)) {	# Stop for non-list diffs
 	#		stop("'diffs' must be a list")
 	#	}
@@ -362,7 +410,8 @@ dynardl <- function(formula,
 					if(!(diffs[i] %in% all.vars(formula))) {
 							warning(paste(paste("Variable"), paste(diffs[i]), paste("in the diffs list not found in model formula. Not included in differences."), sep = " "))
 					}
-				}
+			}
+		}
 	#		}
 	#	}
 	}
@@ -416,10 +465,15 @@ dynardl <- function(formula,
 	# Levels controls #
 	###################
 	if(length(levels)){
-		# Warn if variables aren't in formula
-		for(i in 1:length(levels)) {
-			if(!(levels[i] %in% all.vars(formula))) {
-				warning(paste(paste("Variable"), paste(levels[i]), paste("in the levels list not found in model formula. Not included in levels."), sep = " "))
+		if(isTRUE(is.list(levels))) {
+			stop("Declare levels as a vector of variables to be included in levels (i.e. levels = c('X1', ...))")
+		}
+		else {
+			# Warn if variables aren't in formula
+			for(i in 1:length(levels)) {
+				if(!(levels[i] %in% all.vars(formula))) {
+					warning(paste(paste("Variable"), paste(levels[i]), paste("in the levels list not found in model formula. Not included in levels."), sep = " "))
+				}
 			}
 		}
 	}
@@ -814,6 +868,8 @@ dynardl <- function(formula,
 	}
 	
 	# Add EC status to res object to help with pssbounds
+	# Add y to help with dynardl.auto.correlated
+	res$y <- dv
 	res$EC <- ec
 	res$simulate <- simulate
 	res$ymean <- mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)	
@@ -954,16 +1010,30 @@ dynardl <- function(formula,
 		# If ECM, predicted change is added on to sample mean of Y: first/second element of forcesetlist (first is constant)
 		if(ec == "TRUE") {
 			if(constant == FALSE) { # Set this because it changes where LDV is
-				meanpv[1] <- mean(PV) + set[1] 
+				if(qoi == "mean") { # If we're summarizing with the mean
+					meanpv[1] <- mean(PV) + set[1] 
+				}
+				else {
+					meanpv[1] <- median(PV) + set[1] 
+				}
 			} 
 			else {
-				meanpv[1] <- mean(PV) + set[2] 
+				if(qoi == "mean") { # If we're summarizing with the mean
+					meanpv[1] <- mean(PV) + set[2] 	
+				}
+				else {
+					meanpv[1] <- median(PV) + set[2] 
+				}
 			}
 		} 
 		else { 	# If just LDV model, it's just the new predicted change
-			meanpv[1] <- mean(PV)
+			if(qoi == "mean") { # If we're summarizing with the mean
+				meanpv[1] <- mean(PV)
+			}
+			else {
+				meanpv[1] <- median(PV)		
+			}
 		}			
-
 		###########################
 		# Values at t = 2 - range #
 		###########################		
@@ -1113,15 +1183,30 @@ dynardl <- function(formula,
 			# Lastly, get the predicted values
 			if(ec == TRUE) {
 				if(constant == FALSE) {
-					meanpv[p] <- mean(PV) + set[1]
+					if(qoi == "mean") { # If we're summarizing with the mean
+						meanpv[p] <- mean(PV) + set[1]
+					}
+					else {
+						meanpv[p] <- median(PV) + set[1]
+					}
 				} 
 				else {
-					meanpv[p] <- mean(PV) + set[2]
+					if(qoi == "mean") { # If we're summarizing with the mean
+						meanpv[p] <- mean(PV) + set[2]
+					}
+					else {
+						meanpv[p] <- median(PV) + set[2]	
+					}
 				}
 			} 
 			else {
-				meanpv[p] <- mean(PV)
-			}		
+				if(qoi == "mean") { # If we're summarizing with the mean
+					meanpv[p] <- mean(PV)
+				}
+				else {
+					meanpv[p] <- median(PV)					
+				}
+			}				
 			setTxtProgressBar(pb, p)
 		} # Close time loop
 		close(pb)		
@@ -1134,61 +1219,19 @@ dynardl <- function(formula,
 			sims <- matrix(rep(NA, range*7), ncol = 7)
 			sims[,1] <- meanpv[(burnin+1):brange]
 			sims[,2:7] <- PV_pctile[(burnin+1):brange,]
-			colnames(sims) <- c("mean", "ll95", "ll90", "ll75", "ul75", "ul90", "ul95")
+			colnames(sims) <- c("central", "ll95", "ll90", "ll75", "ul75", "ul90", "ul95")
 		} 
 		else {
 			sims <- matrix(rep(NA, range*9), ncol = 9)
 			sims[,1] <- meanpv[(burnin+1):brange]
 			sims[,2:9] <- PV_pctile[(burnin+1):brange,]
-			colnames(sims) <- c("mean", "ll95", "ll90", "ll75", "ul75", "ul90", "ul95", paste("ll", sig, sep = ""), paste("ul", sig, sep = ""))
+			colnames(sims) <- c("central", "ll95", "ll90", "ll75", "ul75", "ul90", "ul95", paste("ll", sig, sep = ""), paste("ul", sig, sep = ""))
 		}
 		sim.time <- seq(1, length(sims[,1]))
 		temp.names <- colnames(sims)
 		sims <- cbind(sim.time, sims)
 		colnames(sims) <- c("time", temp.names)
 		z <- data.frame(sims)
-		
-		##########
-		# Graphs #
-		##########
-		if(graph == TRUE) {
-			if(expectedval == TRUE) {
-				ylabel <- "Expected Value"
-			} 
-			else {
-				ylabel <- "Predicted Value"
-			}
-			if(rarea == TRUE) { # Area graph
-				plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
-					ylab = ylabel, xlab = "Time")
-				# 95
-				polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "skyblue1", border = NA)
-				# 90
-				polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = "skyblue3", border = NA)
-				# 75
-				polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
-				# Actual response
-				lines(z$time, z$mean, lty = 2, lwd = 3)
-			}
-			else { # Spike graph
-				plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
-					ylab = ylabel, xlab = "Time")
-				# 95
-				for(i in 1:length(z$time)) {
-					segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "skyblue1")
-				}
-				# 90
-				for(i in 1:length(z$time)) {
-					segments(z$time[i], z$ll90[i], z$time[i], z$ul90[i], lwd = 3, col = "skyblue3")
-				}
-				# 75
-				for(i in 1:length(z$time)) {
-					segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
-				}
-				# Actual response
-				points(z$time, z$mean, lwd = 4)
-			}
-		}
 		#########################
 		# Establish data output #
 		#########################
@@ -1213,19 +1256,21 @@ dynardl <- function(formula,
 			names(out) <- c("model")
 		}
 	}
+	class(out) <- "dynardl"  # Apply class dynardl so summary method is called
 	out	# Send data out	
 }
 
-##########################################
-# ------(5) area.simulation.graph -------#
-##########################################
-#' Create an area graph of a simulated response in a dynardl model
-#' @param x a dynardl model with a simulation to be graphed
-#' @param changes whether the graph should be shown in levels of the dependent variable or in changes in levels. The default is \code{FALSE}
+#########################################
+# ------(5) area.simulation.plot -------#
+#########################################
+#' Create an area plot of a simulated response in a dynardl model
+#' @param x a dynardl model with a simulation to be plotted
+#' @param response whether the plot of the response should be shown in levels of the dependent variable (\code{levels}) 
+#' or in changes from the mean of the dependent variable (\code{mean.changes}). The default is \code{levels}
 #' @param bw should the colors be in black and white (for publication)? The default is \code{FALSE}
-#' @return an area graph
+#' @return an area plot
 #' @details
-#' When running \code{dynardl}, \code{simulate} must be true so that there is a simulation to graph.
+#' When running \code{dynardl}, \code{simulate} must be true so that there is a simulation to plot.
 #' @importFrom graphics lines plot points polygon segments
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
@@ -1237,18 +1282,21 @@ dynardl <- function(formula,
 #'        diffs = c("incshare10", "urate"), 
 #'        lagdiffs = list("concern" = 1),
 #'        ec = TRUE, simulate = TRUE, range = 30,
-#'        shockvar = "incshare10", graph = FALSE)
-#' area.simulation.graph(ardl.model)	# Shows absolute levels
-#' area.simulation.graph(ardl.model, changes = TRUE)  # Shows changes from mean level
-#' area.simulation.graph(ardl.model, bw = TRUE)	 # Grayscale plots
+#'        shockvar = "incshare10")
+#' area.simulation.plot(ardl.model)	# Shows absolute levels
+#' area.simulation.plot(ardl.model, response = "mean.changes")  # Shows changes from mean level
+#' area.simulation.plot(ardl.model, bw = TRUE)	 # Grayscale plots
 #' @export
 
-area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
+area.simulation.plot <- function(x, response = "levels", bw = FALSE) {
 	if(x$model$simulate == FALSE) {
-		stop("dynardl() object does not include simulation to graph.")
+		stop("dynardl() object does not include simulation to plot.")
+	}
+	if(!(response %in% c("levels", "mean.changes"))) {
+		stop("Response must either be plotted in levels ('levels') or in changes from mean of DV ('mean.changes').")
 	}
 	z <- x$simulation
-	if(changes == FALSE) { # If we're just plotting levels of Y
+	if(response == "levels") { # If we're just plotting levels of Y
 		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
 			ylab = "Y Value", xlab = "Time")
 		if(bw == FALSE) {
@@ -1259,7 +1307,7 @@ area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 			# 75
 			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
 			# Actual response
-			lines(z$time, z$mean, lty = 2, lwd = 3)
+			lines(z$time, z$central, lty = 2, lwd = 3)
 		} else {
 			# 95
 			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "grey70", border = NA)
@@ -1268,7 +1316,7 @@ area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 			# 75
 			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
 			# Actual response
-			lines(z$time, z$mean, lty = 2, lwd = 3)	
+			lines(z$time, z$central, lty = 2, lwd = 3)	
 		}	
 	} else { # If it's changes from the mean, changes values, same code
 		z$ll95 <- z$ll95 - x$model$ymean
@@ -1277,7 +1325,7 @@ area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 		z$ul90 <- z$ul90 - x$model$ymean
 		z$ll75 <- z$ll75 - x$model$ymean
 		z$ul75 <- z$ul75 - x$model$ymean
-		z$mean <- z$mean - x$model$ymean
+		z$central <- z$central - x$model$ymean
 		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
 			ylab = "Changes from Y Mean Value", xlab = "Time")
 		if(bw == FALSE) {
@@ -1288,7 +1336,7 @@ area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 			# 75
 			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
 			# Actual response
-			lines(z$time, z$mean, lty = 2, lwd = 3)
+			lines(z$time, z$central, lty = 2, lwd = 3)
 		} else {
 			# 95
 			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = "grey70", border = NA)
@@ -1297,21 +1345,22 @@ area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 			# 75
 			polygon(c(z$time, rev(z$time)), c(z$ul75, rev(z$ll75)), col = "grey30", border = NA)
 			# Actual response
-			lines(z$time, z$mean, lty = 2, lwd = 3)	
+			lines(z$time, z$central, lty = 2, lwd = 3)	
 		}	
 	}
 }
 
-##########################################
-# ------(6) spike.simulation.graph ------#
-##########################################
-#' Create a spike graph of a simulated response in a dynardl model
-#' @param x a dynardl model with a simulation to be graphed
-#' @param changes whether the graph should be shown in levels of the dependent variable or in changes in levels. The default is \code{FALSE}
+#########################################
+# ------(6) spike.simulation.plot ------#
+#########################################
+#' Create a spike plot of a simulated response in a dynardl model
+#' @param x a dynardl model with a simulation to be plotted
+#' @param response whether the plot of the response should be shown in levels of the dependent variable (\code{levels}) 
+#' or in changes from the mean of the dependent variable (\code{mean.changes}). The default is \code{levels}
 #' @param bw should the colors be in black and white (for publication)? The default is \code{FALSE}
-#' @return a spike graph
+#' @return a spike plot
 #' @details
-#' When running \code{dynardl}, \code{simulate} must be true so that there is a simulation to graph.
+#' When running \code{dynardl}, \code{simulate} must be true so that there is a simulation to plot.
 #' @importFrom graphics lines plot points polygon segments
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
@@ -1323,18 +1372,21 @@ area.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 #'        diffs = c("incshare10", "urate"), 
 #'        lagdiffs = list("concern" = 1),
 #'        ec = TRUE, simulate = TRUE, range = 30,
-#'        shockvar = "incshare10", graph = FALSE)
-#' spike.simulation.graph(ardl.model)	# Shows absolute levels
-#' spike.simulation.graph(ardl.model, changes = TRUE)  # Shows changes from mean level
-#' spike.simulation.graph(ardl.model, bw = TRUE)	 # Grayscale plots
+#'        shockvar = "incshare10")
+#' spike.simulation.plot(ardl.model)	 # Shows absolute levels
+#' spike.simulation.plot(ardl.model, response = "mean.changes")  # Shows changes from mean level
+#' spike.simulation.plot(ardl.model, bw = TRUE)	 # Grayscale plots
 #' @export
 
-spike.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
+spike.simulation.plot <- function(x, response = "levels", bw = FALSE) {
 	if(x$model$simulate == FALSE) {
-		stop("dynardl() object does not include simulation to graph.")
+		stop("dynardl() object does not include simulation to plot.")
+	}
+	if(!(response %in% c("levels", "mean.changes"))) {
+		stop("Response must either be plotted in levels ('levels') or in changes from mean of DV ('mean.changes').")
 	}
 	z <- x$simulation
-	if(changes == FALSE) { # If we're just plotting levels of Y
+	if(response == "levels") { # If we're just plotting levels of Y
 		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
 			ylab = "Y Value", xlab = "Time")	
 		if(bw == FALSE) {
@@ -1348,7 +1400,7 @@ spike.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
 			}
 			# Actual response
-			points(z$time, z$mean, lwd = 4)
+			points(z$time, z$central, lwd = 4)
 		} else {
 			for(i in 1:length(z$time)) { # 95 percent sig
 				segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "grey70")
@@ -1360,7 +1412,7 @@ spike.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
 			}
 			# Actual response
-			points(z$time, z$mean, lwd = 4)	
+			points(z$time, z$central, lwd = 4)	
 		}
 	} else {	 # If it's changes from the mean, changes values, same code
 		z$ll95 <- z$ll95 - x$model$ymean
@@ -1369,7 +1421,7 @@ spike.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 		z$ul90 <- z$ul90 - x$model$ymean
 		z$ll75 <- z$ll75 - x$model$ymean
 		z$ul75 <- z$ul75 - x$model$ymean
-		z$mean <- z$mean - x$model$ymean
+		z$central <- z$central - x$model$ymean
 		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
 			ylab = "Changes from Y Mean Value", xlab = "Time")	
 		if(bw == FALSE) {
@@ -1383,7 +1435,7 @@ spike.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
 			}
 			# Actual response
-			points(z$time, z$mean, lwd = 4)
+			points(z$time, z$central, lwd = 4)
 		} else {
 			for(i in 1:length(z$time)) { # 95 percent sig
 				segments(z$time[i], z$ll95[i], z$time[i], z$ul95[i], lwd = 1, col = "grey70")
@@ -1395,7 +1447,7 @@ spike.simulation.graph <- function(x, changes = FALSE, bw = FALSE) {
 				segments(z$time[i], z$ll75[i], z$time[i], z$ul75[i], lwd = 5, col = "grey30")
 			}
 			# Actual response
-			points(z$time, z$mean, lwd = 4)	
+			points(z$time, z$central, lwd = 4)	
 		}
 	}
 }	
@@ -1435,9 +1487,9 @@ pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, cas
 	# If the model wasn't error correcting, we tell the user
 	if(!(identical(data, list()))) {
 		if(data$model$EC == FALSE) {
-			stop("pssbounds() only for error-correcting relationships. See Philips (2017).")
+			stop("pssbounds() only for error-correcting relationships. See Philips (2018).")
 		}
-	}
+	}	
 	# Check if it was passed a dynardl object
 	if(!(identical(data, list()))) {
 		obs <- data$pssbounds$obs
@@ -3135,7 +3187,7 @@ pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, cas
 #' @param object.out if \code{TRUE}, and \code{dynardl.auto.correlated} is assigned to an object, the AIC, BIC, and results will be stored for the user's convenience.
 #' @return The results of autocorrelation tests.
 #' @details
-#' This is a simple and convenient way to test whether the residuals from the \code{dynardl} model are white noise. As an aside, this is also why \code{dynardl} has a \code{simulate = FALSE} argument: users can ensure the model is white noise residuals before estimating a potentially time-intensive simulation. The output also reminds the user of the null hypotheses for the autocorrelation tests.
+#' This is a simple and convenient way to test whether the residuals from the \code{dynardl} model are white noise. As an aside, this is also why \code{dynardl} has a \code{simulate = FALSE} argument: users can ensure the model has white noise residuals before estimating a potentially time-intensive simulation. The output also reminds the user of the null hypotheses for the autocorrelation tests.
 #' @importFrom lmtest bgtest
 #' @importFrom stats shapiro.test
 #' @author Soren Jordan and Andrew Q. Philips
@@ -3199,153 +3251,33 @@ dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NU
 			paste("Log-likelihood:", round(out$logLik, digits = digits), sep = " "), "\n",
 			paste("AIC:", round(out$AIC, digits = digits), sep = " "), "\n",
 			paste("BIC:", round(out$BIC, digits = digits), sep = " "), "\n",
-			paste("Note: AIC and BIC calculated with k =", x$model$rank, "on T =", length(x$model$residuals), "observations.", sep = " ")
-			)
+			paste("Note: AIC and BIC calculated with k =", x$model$rank, "on T =", length(x$model$residuals), "observations.", sep = " "), "\n",
+			
+			"\n",
+			"------------------------------------------------------", "\n")
+			if(round(out$bg$p.value, digits = 3) < 0.01) {
+				cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.01.", "\n",	
+				"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
+			} else if(round(out$bg$p.value, digits = 3) < 0.05) {
+				cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.05.", "\n",
+				"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
+			} else if(round(out$bg$p.value, digits = 3) < 0.10) {
+				cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.10.", "\n", 		
+				"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
+			}
+			if(round(out$sw$p.value, digits = 3) < 0.01) {
+				cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.01.", "\n")	
+			} else if(round(out$sw$p.value, digits = 3) < 0.05) {
+				cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.05.", "\n")		
+			} else if(round(out$sw$p.value, digits = 3) < 0.10) {
+				cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.10.", "\n")		
+			}
 			if(object.out == TRUE) {
 				out
 		}		
 	}
 	else {
 		stop("Provide a dynardl() object to test auto-correlation of residuals.")
-	}	
-}
-
-##################################
-# -----(9) dynardl.effects ------#
-##################################
-
-dynardl.effects <- function(x, tol = 0.025, period = NULL, x.lag = NULL, object.out = FALSE) {
-	if(x$model$simulate == FALSE) {
-		stop("dynardl() object does not include simulation to graph.")
-	}
-	shocktime <- x$simulation$shocktime[1]
-	changes <- abs(dshift(x$simulation$mean))
-	dists <- abs.dists <- rep(NA, length(changes))
-	innov <- abs.innov <- rep(NA, length(changes))
-	triangles <- abs.triangles <- rep(NA, length(changes))
-	triangles.rectangles <- abs.triangles.rectangles <- rep(NA, length(changes))
-	sig.changes <- rep(NA, length(changes))
-	demeaned <- x$simulation$mean - x$model$ymean
-	for(i in 2:length(sig.changes)) {
-		sig.changes[i] <- ifelse(changes[i] >= tol*(max(x$simulation$mean)-min(x$simulation$mean)), TRUE, FALSE) # is the new change more or less than (tolerance)% of the total?
-	}
-	for(i in 2:length(triangles)) {
-		if((demeaned[i] > 0) & (demeaned[i-1] > 0)) { # If both Y values are positive
-			abs.dists[i] <- dists[i] <- demeaned[i]	 # Vertical measure: just the value of the demeaned series (the spike)
-			abs.innov[i] <- innov[i] <- changes[i] # Unit over unit change in the spike level
-			abs.triangles[i] <- triangles[i] <- changes[i]*0.5 # 1/2*base(always 1 unit) * height: change in value t-1 to t
-			abs.triangles.rectangles[i] <- triangles.rectangles[i] <- triangles[i] + min(demeaned[i], demeaned[i-1]) # It's the trianlge plus the rectangle underneath it: l x w (w = 1, height is the lesser of the two verticals from the mean)
-		} else {
-			if((demeaned[i] < 0) & (demeaned[i-1] < 0)) {	# If both Y values are negative
-				dists[i] <- demeaned[i] # Vertical measure: just the value of the demeaned series (the spike)
-				abs.dists[i] <- abs(dists[i]) # Don't make it negative, as it's counting ``total effect''
-				innov[i] <- (-1)*changes[i] # Negative change from last period
-				abs.innov[i] <- abs(innov[i]) # Total change from previous 
-				triangles[i] <- (-1)*changes[i]*0.5 # 1/2*base(always 1 unit) * height
-				abs.triangles[i] <- abs(triangles[i])
-				triangles.rectangles[i] <- triangles[i] + max(demeaned[i], demeaned[i-1])	 # The triangle plus the rectangle underneath which is the GREATER (less negative) of the two	
-				abs.triangles.rectangles[i] <- abs(triangles.rectangles[i])		
-			} else {
-				# X runs one unit, total change is changes[i], so slope of full line is changes[i]
-				#  Chunk up the line by reducing the slope into the parts of changes that are above and below changes
-				if(demeaned[i] < 0) { # If the second observation is below zero
-					cross.over <- (demeaned[i-1]/changes[i])
-					pos.triangle <- demeaned[i-1]*cross.over*0.5
-					neg.triangle <- demeaned[i]*(1-cross.over)*0.5
-					innov[i] <- dists[i] <- demeaned[i-1] + demeaned[i] # The net (positive/negative) of the two spikes
-					abs.innov[i] <- abs.dists[i] <- demeaned[i-1] + abs(demeaned[i]) # Make the second observation positive!
-					triangles[i] <- triangles.rectangles[i] <- pos.triangle + neg.triangle # No rectangles below: crossover
-					abs.triangles[i] <- abs.triangles.rectangles[i] <- pos.triangle + abs(neg.triangle)
-				} else {
-					cross.over <- (demeaned[i]/changes[i])
-					pos.triangle <- demeaned[i]*cross.over*0.5
-					neg.triangle <- demeaned[i-1]*(1-cross.over)*0.5
-					innov[i] <- dists[i] <- demeaned[i-1] + demeaned[i] # The net (positive/negative) of the two spikes
-					abs.innov[i] <- abs.dists[i] <- abs(demeaned[i-1]) + demeaned[i] # Make the first observation positive!
-					triangles[i] <- triangles.rectangles[i] <- pos.triangle + neg.triangle # No rectangles below: crossover
-					abs.triangles[i] <- abs.triangles.rectangles[i] <- pos.triangle + abs(neg.triangle)	
-				}
-			}
-		}
-	}
-	areas <- data.frame(x$simulation$mean, demeaned, dists, abs.dists, innov, abs.innov, triangles, abs.triangles, triangles.rectangles, abs.triangles.rectangles)
-	names(areas) <- c("Y.sim.mean", "Y.sim.demeaned", "spike.lengths", "abs.spike.lengths", "innovations", "abs.innovations",
-		"innovation.area", "abs.innovation.area", "total.area", "abs.total.area")
-	t.spikes <- a.t.spikes <- t.innov <- a.t.innov <- t.trian <- a.t.trian <- t.trirect <- a.t.trirect <- NULL
-	# Now actually calculate 
-	# When's the last significant change (according to tolerance?). Used for testing
-	which.to.add <- seq(1, length(demeaned), 1)
-	last.sign.period <- max(subset(which.to.add, sig.changes == TRUE))
-
-	if(is.null(period)) { # If we're not calculating based on a period
-		last.period <- last.sign.period
-		t.spikes <- sum(dists[shocktime:last.period])
-		a.t.spikes <- sum(abs.dists[shocktime:last.period])
-		t.innov <- sum(innov[shocktime:last.period])
-		a.t.innov <- sum(abs.innov[shocktime:last.period])		
-		t.trian <- sum(triangles[shocktime:last.period])
-		a.t.trian <- sum(abs.triangles[shocktime:last.period])
-		t.trirect <- sum(triangles.rectangles[shocktime:last.period])
-		a.t.trirect <- sum(abs.triangles.rectangles[shocktime:last.period])
-	} else { # If we ARE calculating based on a period
-		last.period <- shocktime + period
-		if(last.period > max(x$simulation$time)) { # If the user wants more periods than are available ...
-			last.period <- max(x$simulation$time)
-			warning(paste(paste("Length of effect (period) requested exceeds simulation length. Effect calculated for"), paste(last.period - shocktime), paste("periods."), sep = " "))	
-		}
-		if(last.period < last.sign.period) { # If the user wants a period but Y could still be responding ...
-			warning(paste(paste("Y might still be changing after"), paste(period), paste("period(s). Consider lengthening the number of periods included in calculated effect."), sep = " "))	
-		}
-		t.spikes <- sum(dists[shocktime:last.period])
-		a.t.spikes <- sum(abs.dists[shocktime:last.period])
-		t.innov <- sum(innov[shocktime:last.period])
-		a.t.innov <- sum(abs.innov[shocktime:last.period])
-		t.trian <- sum(triangles[shocktime:last.period])
-		a.t.trian <- sum(abs.triangles[shocktime:last.period])
-		t.trirect <- sum(triangles.rectangles[shocktime:last.period])
-		a.t.trirect <- sum(abs.triangles.rectangles[shocktime:last.period])
-	}
-	# Now issue a few warnings
-	if(last.sign.period == max(which.to.add)) { # If the simulation isn't long enough, potentially
-		warning(paste(paste("Y might still be changing at the end of the simulation. Consider lengthening the simulation beyond range ="), paste(max(which.to.add)), paste("periods in dynardl()."), sep = " "))
-	}
-	if(!(min(x$simulation$ul75) < max(x$simulation$ll75))) { # If there is overlap in the significant regions ...
-		warning(paste("Use caution, as the effect of X on Y might not be meaningfully different from 0: upper 75% interval overlaps with lower 75% interval."))
-	}
-	if(is.null(x.lag)) {
-		immediate <- demeaned[shocktime] - demeaned[shocktime - 1]
-	} else {
-		immediate <- demeaned[shocktime + x.lag] - demeaned[shocktime + x.lag - 1]
-	}
-	quantities <- data.frame(immediate, t.spikes, a.t.spikes, t.innov, a.t.innov, t.trian, a.t.trian, t.trirect, a.t.trirect)
-	names(quantities) <- c("immediate.effect", "sum.spike.lengths", "sum.abs.spike.lengths", "sum.innovations", "sum.abs.innovations",
-		"sum.innovation.area", "sum.abs.innovation.area", "sum.total.area", "sum.abs.total.area")
-	out <- list(areas, quantities)
-	names(out) <- c("areas", "quantities")
-	
-	# Output
-	flush.console()
-	cat("\n",
-		"------------------------------------------------------", "\n")
-		if(is.null(x.lag)) {
-			cat(paste(" Immediate (shock period) effect:", round(out$quantities$immediate.effect, digits = 3), sep = " "), "\n")
-		} else {
-			cat(paste(" Immediate (shock period) effect:", round(out$quantities$immediate.effect, digits = 3), "adjusted by", x.lag, "period(s) for the lag of X.", sep = " "), "\n")
-		}
-		cat(
-		" ------------------------------------------------------", "\n",
-		paste("Net sum of spikes:", round(out$quantities$sum.spike.lengths, digits = 3), sep = " "), "\n",
-		paste("Absolute sum of spikes:", round(out$quantities$sum.abs.spike.lengths, digits = 3), sep = " "), "\n",
-		paste("Net sum of innovations:", round(out$quantities$sum.innovations, digits = 3), sep = " "), "\n",
-		paste("Absolute sum of innovations:", round(out$quantities$sum.abs.innovations, digits = 3), sep = " "), "\n",
-		paste("Net area of innovations:", round(out$quantities$sum.innovation.area, digits = 3), sep = " "), "\n",
-		paste("Absolute area of innovations:", round(out$quantities$sum.abs.innovation.area, digits = 3), sep = " "), "\n",
-		paste("Net sum of area under curve:", round(out$quantities$sum.total.area, digits = 3), sep = " "), "\n",
-		paste("Absolute sum of area under curve:", round(out$quantities$sum.abs.total.area, digits = 3), sep = " "), "\n",
-		paste("Calculated on", paste(last.period - shocktime), paste("periods."), sep = " "), "\n",
-		"------------------------------------------------------", "\n")
-	if(object.out == TRUE) {
-		out
 	}	
 }
 

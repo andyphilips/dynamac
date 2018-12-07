@@ -5,11 +5,11 @@
 \title{Estimate and Simulate ARDL Model}
 \usage{
 dynardl(formula, data = list(), lags = list(), diffs = list(),
-  lagdiffs = list(), levels = list(), ec = FALSE, range = 20,
-  sig = 95, time = 10, shockvar = list(),
-  shockval = sd(data[[shockvar]]), sims = 1000, forceset = NULL,
-  burnin = 20, expectedval = FALSE, trend = FALSE, constant = TRUE,
-  graph = FALSE, rarea = TRUE, modelout = FALSE, simulate = TRUE)
+  lagdiffs = list(), levels = list(), ec = FALSE, trend = FALSE,
+  constant = TRUE, modelout = FALSE, simulate = FALSE,
+  shockvar = list(), shockval = sd(data[[shockvar]]), time = 10,
+  qoi = "mean", forceset = NULL, range = 20, burnin = 20,
+  sims = 1000, sig = 95, expectedval = FALSE)
 }
 \arguments{
 \item{formula}{a symbolic description of the model to be estimated. ARDL
@@ -31,26 +31,36 @@ estimated.}
 in first-differences). By default, \code{ec} is set to \code{FALSE},
 meaning \code{y} will appear in levels.}
 
-\item{range}{the range of the simulation to be conducted}
+\item{trend}{include a linear time trend. The default is FALSE.}
 
-\item{sig}{the significance level (1 - \code{p}) that the user wants for
-the simulations. The default level is 95\% significance (\code{sig = 95}).}
+\item{constant}{include a constant. The default is TRUE.}
 
-\item{time}{the time period in the simulation for the variable to be
-shocked.}
+\item{modelout}{print the regression estimates in the console}
+
+\item{simulate}{simulate the reponse. Otherwise, just the regression model
+will be estimated. If \code{simulate = FALSE}, options \code{shockvar}, \code{shockval}, 
+\code{time}, \code{qoi}, \code{forceset}, \code{range}, \code{burnin}, \code{sims}, 
+\code{sig}, and \code{expectedval}, are ignored. The default is FALSE.}
 
 \item{shockvar}{the variable to be shocked. There is no default.}
 
 \item{shockval}{the amount by which the \code{shockvar} should be shocked.
 The default is one standard deviation of the shocked variable.}
 
-\item{sims}{the number of simulations to use in creating the quantities of
-interest. The default is 1000.}
+\item{time}{the time period in the simulation for the variable to be
+shocked.}
+
+\item{qoi}{summarize the response of the dependent variable with the mean or the median.
+Although the default is \code{mean}, if there is underlying skew in the 
+distribution, it might be better summarized by \code{median}.}
 
 \item{forceset}{by default, in the simulations, variables in levels will be
 set to their means; variables in differences will be set to 0.
 Alternatively, users can set any variable in the model to a different value
-using a list in \code{forceset}.}
+using a list in \code{forceset}. These values can be any user-defined value, 
+including means, medians, percentiles, or other values of interest.}
+
+\item{range}{the range of the simulation to be conducted}
 
 \item{burnin}{the number of time periods to disregard before recording the
 values. These do not include the \code{range}; in other words, they take
@@ -58,24 +68,16 @@ place before the \code{range} specified above. Users can increase the
 number of \code{burnin} periods, but probably should not decrease them. The
 default is 20.}
 
+\item{sims}{the number of simulations to use in creating the quantities of
+interest (the response of the dependent variable). The default is 1000.}
+
+\item{sig}{the significance level (1 - \code{p}) that the user wants for
+the simulations. The default level is 95\% significance (\code{sig = 95})}
+
 \item{expectedval}{if this is \code{TRUE}, the simulation will record the
 expected values of across the \code{sims} by averaging errors. We recommend
 setting it to \code{FALSE}, since expected values do not account for
 stochastic error present in the model itself.}
-
-\item{trend}{include a linear time trend. The default is FALSE.}
-
-\item{constant}{include a constant. The default is TRUE.}
-
-\item{graph}{create a plot of the simulated response. The default is FALSE.}
-
-\item{rarea}{if \code{graph = TRUE}, create an area plot. If \code{graph =
-TRUE} and \code{rarea = FALSE}, a spike plot will be created.}
-
-\item{modelout}{print the regression estimates in the console}
-
-\item{simulate}{simulate the reponse. Otherwise, just the regression model
-will be estimated.}
 }
 \value{
 \code{dynardl} should always return an estimated model. It may or
@@ -85,12 +87,12 @@ simulated response (if created) are stored in a list if the model is
 assigned to an object.
 }
 \description{
-Estimate autoregressive distributed lag model, simulate interesting values,
-and plot predictions
+Estimate autoregressive distributed lag model and simulate interesting values (if desired)
 }
 \details{
-Estimate an auto-regressive distributed lag model. Moreover, provide a
-graphical interpretation of the results by simulating the response of 
+Estimate an auto-regressive distributed lag model. Moreover, enable a
+graphical interpretation of the results (through \code{area.simulation.plot} or
+\code{spike.simulation.plot}) by simulating the response of 
 the dependent variable to shocks in one of the regressors.
 }
 \examples{
@@ -99,7 +101,7 @@ ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq,
        lags = list("concern" = 1, "incshare10" = 1),
        diffs = c("incshare10", "urate"), 
        ec = TRUE, simulate = FALSE)
-summary(ardl.model$model)
+summary(ardl.model)
 
 # Adding a lagged difference of the dependent variable
 ardl.model.2 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
@@ -107,15 +109,17 @@ ardl.model.2 <- dynardl(concern ~ incshare10 + urate, data = ineq,
        diffs = c("incshare10", "urate"), 
        lagdiffs = list("concern" = 1),
        ec = TRUE, simulate = FALSE)
-summary(ardl.model.2$model)
+summary(ardl.model.2)
 
-# Does not work: levels must appear as a vector
+# Does not work: levels and diffs must appear as a vector
+\donttest{
 ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
        lags = list("concern" = 1, "incshare10" = 1),
        levels = list("urate" = 1),
-       diffs = c("incshare10", "urate"), 
+       diffs = list("incshare10" = 1, "urate" = 1), 
        lagdiffs = list("concern" = 1),
        ec = TRUE, simulate = FALSE)
+}
 
 ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
        lags = list("concern" = 1, "incshare10" = 1),
