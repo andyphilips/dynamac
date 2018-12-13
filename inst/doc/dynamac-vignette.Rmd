@@ -45,10 +45,6 @@ library(dynamac)
 head(ineq)
 ```
 
-```{r echo = FALSE}
-source("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynardl.R")
-```
-
 `concern` is public concern about income inequality; `incshare10` is the income share of the top ten percent; `urate` is the unemployment rate. Wright [-@wrightpolitical] argues that concern about income inequality grows as inequality itself worsens and economic conditions deteriorate. A simple model, then, is that concern is a function of past values of itself, the level of income share held by the top ten percent, *changing* levels of income share held by the top ten percent, as well *changing* levels of unemployment in the short term. 
 
 $$\Delta Concern_t = \alpha_0 + \phi_1 Concern_{t-1} + \theta_1 Income Top 10_{t-1} + \beta_1 \Delta Income Top 10_t + \beta_2 \Delta Unemployment_t + \epsilon_t$$

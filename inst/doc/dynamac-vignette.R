@@ -8,9 +8,6 @@ knitr::opts_chunk$set(
 library(dynamac)
 head(ineq)
 
-## ----echo = FALSE--------------------------------------------------------
-source("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynardl.R")
-
 ## ------------------------------------------------------------------------
 library(urca)
 ts.plot(ineq$concern)

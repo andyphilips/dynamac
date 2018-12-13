@@ -16,6 +16,6 @@ BuildManual: yes
 RoxygenNote: 6.1.1
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2018-12-07 21:05:32 UTC; scj0014
+Packaged: 2018-12-13 02:29:10 UTC; scj0014
 Author: Soren Jordan [aut, cre, cph],
   Andrew Q. Philips [aut]

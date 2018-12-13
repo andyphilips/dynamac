@@ -1,5 +1,5 @@
-# version 0.1.5
-# 12/7/2018
+# version 0.1.5.9001
+# 12/12/2018
 # Authors: Soren Jordan, Andrew Q. Philips
 
 # Corrections since previous version:
@@ -16,12 +16,13 @@
 #   Renamed changes option in plot functions
 #   Added French dataset for new examples
 
-
 # TO DO: 
 #   Simulate and test AUC quantities (long-term)
 #   Future release: permanent shifts as opposed to shocks?
 #   Add more autocorrelation tests
 #	Impulse responses (period over period changes)
+#	Unit test of critical values by checking output
+#	Change the summary formula shown
 
 # Datasets exported: 
 #' Data on public concern about economic inequality
@@ -50,6 +51,26 @@ NULL
 
 
 
+#' Data on French Energy Consumption and GDP
+#'
+#' Data on GDP are from World Bank World Development Indicators. Data
+#' on energy consumption are from the PB Statistical Review of World
+#' Energy (June 2018).
+#'
+#' @format A data frame with 53 rows and 4 variables:
+#' \describe{
+#'   \item{country}{Country}
+#'   \item{year}{Year}
+#'   \item{lnGDP_cons2010USD}{ln(GDP), constant 2010 US dollars}
+#'   \item{lnenergy}{ln(energy consumption), mill. tons oil equiv.}
+#' }
+#' @docType data
+#' @keywords datasets
+#' @usage data(france.data)
+#' @name france.data
+NULL
+
+
 #' Data on US Supreme Court Approval
 #'
 #' A dataset from: Durr, Robert H., Andrew D. Martin, and Christina
@@ -76,25 +97,7 @@ NULL
 #' @name supreme.sup
 NULL
 
-#' Data on French Energy Consumption and GDP
-#'
-#' Data on GDP are from World Bank World Development Indicators. Data
-#' on energy consumption are from the PB Statistical Review of World
-#' Energy (June 2018).
-#'
-#' @format A data frame with 53 rows and 4 variables:
-#' \describe{
-#'   \item{country}{Country}
-#'   \item{year}{Year}
-#'   \item{lnGDP_cons2010USD}{ln(GDP), constant 2010 US dollars}
-#'   \item{lnenergy}{ln(energy consumption), mill. tons oil equiv.}
-#' }
-#' @docType data
-#' @keywords datasets
-#' @usage data(france.data)
-#' @name france.data
-NULL
-
+ 
 ## Dependencies: 	MASS (for multivariate normal draws)
 #					lmtest (for autocorrelation tests)
 #
@@ -159,15 +162,10 @@ NULL
 #	digits = [3]						where to round AIC/BIC
 #	order = [NULL]						the order of autocorrelation to test in bgtest
 #	object.out = [FALSE]					do you want to print all of this into an object?
+#
+# (9) summary.dynardl()
+#	x = [no default]					a dynardl model object
 
-
-# One unseen function. Applies a summary method for class ``dynardl'' so that summary(x) can be used, 
-#  rather than summary(x$model)
-
-summary.dynardl <- function(x) {
-	stopifnot(inherits(x, "dynardl"))
-	summary(x$model)
-}
 
 ##########################################
 # ------------(1) lshift ----------------#
@@ -3278,6 +3276,174 @@ dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NU
 	}
 	else {
 		stop("Provide a dynardl() object to test auto-correlation of residuals.")
+	}	
+}
+
+
+
+##################################
+# -----(9) summary.dynardl ------#
+##################################
+#' Enable summary calls to dynardl model objects. 
+#' @param object a \code{dynardl} model
+#' @param ... additional arguments in the generic summary call
+#' @return A summary of the fitted ARDL model.
+#' @details
+#' \code{dynardl}, by default, stores regression results in \code{foo$model}. This calls those results 
+#' directly with \code{summary}.
+#' @author Soren Jordan and Andrew Q. Philips
+#' @keywords utilities
+#' @examples
+#' # Using the ineq data from dynamac
+#' ardl.model <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#'        lags = list("concern" = 1, "incshare10" = 1),
+#'        diffs = c("incshare10", "urate"), 
+#'        lagdiffs = list("concern" = 1),
+#'        ec = TRUE, simulate = FALSE)
+#' summary(ardl.model)
+#' @export
+
+summary.dynardl <- function(object, ...) {
+	stopifnot(inherits(object, "dynardl"))
+	summary(object$model)
+}
+
+###################################
+# -----(10) dynardl.effects ------#
+###################################
+
+dynardl.effects <- function(x, tol = 0.025, period = NULL, x.lag = NULL, object.out = FALSE) {
+	if(x$model$simulate == FALSE) {
+		stop("dynardl() object does not include simulation to plot.")
+	}
+	shocktime <- x$simulation$shocktime[1]
+	changes <- abs(dshift(x$simulation$mean))
+	dists <- abs.dists <- rep(NA, length(changes))
+	innov <- abs.innov <- rep(NA, length(changes))
+	triangles <- abs.triangles <- rep(NA, length(changes))
+	triangles.rectangles <- abs.triangles.rectangles <- rep(NA, length(changes))
+	sig.changes <- rep(NA, length(changes))
+	demeaned <- x$simulation$mean - x$model$ymean
+	for(i in 2:length(sig.changes)) {
+		sig.changes[i] <- ifelse(changes[i] >= tol*(max(x$simulation$mean)-min(x$simulation$mean)), TRUE, FALSE) # is the new change more or less than (tolerance)% of the total?
+	}
+	for(i in 2:length(triangles)) {
+		if((demeaned[i] > 0) & (demeaned[i-1] > 0)) { # If both Y values are positive
+			abs.dists[i] <- dists[i] <- demeaned[i]	 # Vertical measure: just the value of the demeaned series (the spike)
+			abs.innov[i] <- innov[i] <- changes[i] # Unit over unit change in the spike level
+			abs.triangles[i] <- triangles[i] <- changes[i]*0.5 # 1/2*base(always 1 unit) * height: change in value t-1 to t
+			abs.triangles.rectangles[i] <- triangles.rectangles[i] <- triangles[i] + min(demeaned[i], demeaned[i-1]) # It's the trianlge plus the rectangle underneath it: l x w (w = 1, height is the lesser of the two verticals from the mean)
+		} else {
+			if((demeaned[i] < 0) & (demeaned[i-1] < 0)) {	# If both Y values are negative
+				dists[i] <- demeaned[i] # Vertical measure: just the value of the demeaned series (the spike)
+				abs.dists[i] <- abs(dists[i]) # Don't make it negative, as it's counting ``total effect''
+				innov[i] <- (-1)*changes[i] # Negative change from last period
+				abs.innov[i] <- abs(innov[i]) # Total change from previous 
+				triangles[i] <- (-1)*changes[i]*0.5 # 1/2*base(always 1 unit) * height
+				abs.triangles[i] <- abs(triangles[i])
+				triangles.rectangles[i] <- triangles[i] + max(demeaned[i], demeaned[i-1])	 # The triangle plus the rectangle underneath which is the GREATER (less negative) of the two	
+				abs.triangles.rectangles[i] <- abs(triangles.rectangles[i])		
+			} else {
+				# X runs one unit, total change is changes[i], so slope of full line is changes[i]
+				#  Chunk up the line by reducing the slope into the parts of changes that are above and below changes
+				if(demeaned[i] < 0) { # If the second observation is below zero
+					cross.over <- (demeaned[i-1]/changes[i])
+					pos.triangle <- demeaned[i-1]*cross.over*0.5
+					neg.triangle <- demeaned[i]*(1-cross.over)*0.5
+					innov[i] <- dists[i] <- demeaned[i-1] + demeaned[i] # The net (positive/negative) of the two spikes
+					abs.innov[i] <- abs.dists[i] <- demeaned[i-1] + abs(demeaned[i]) # Make the second observation positive!
+					triangles[i] <- triangles.rectangles[i] <- pos.triangle + neg.triangle # No rectangles below: crossover
+					abs.triangles[i] <- abs.triangles.rectangles[i] <- pos.triangle + abs(neg.triangle)
+				} else {
+					cross.over <- (demeaned[i]/changes[i])
+					pos.triangle <- demeaned[i]*cross.over*0.5
+					neg.triangle <- demeaned[i-1]*(1-cross.over)*0.5
+					innov[i] <- dists[i] <- demeaned[i-1] + demeaned[i] # The net (positive/negative) of the two spikes
+					abs.innov[i] <- abs.dists[i] <- abs(demeaned[i-1]) + demeaned[i] # Make the first observation positive!
+					triangles[i] <- triangles.rectangles[i] <- pos.triangle + neg.triangle # No rectangles below: crossover
+					abs.triangles[i] <- abs.triangles.rectangles[i] <- pos.triangle + abs(neg.triangle)	
+				}
+			}
+		}
+	}
+	areas <- data.frame(x$simulation$mean, demeaned, dists, abs.dists, innov, abs.innov, triangles, abs.triangles, triangles.rectangles, abs.triangles.rectangles)
+	names(areas) <- c("Y.sim.mean", "Y.sim.demeaned", "spike.lengths", "abs.spike.lengths", "innovations", "abs.innovations",
+		"innovation.area", "abs.innovation.area", "total.area", "abs.total.area")
+	t.spikes <- a.t.spikes <- t.innov <- a.t.innov <- t.trian <- a.t.trian <- t.trirect <- a.t.trirect <- NULL
+	# Now actually calculate 
+	# When's the last significant change (according to tolerance?). Used for testing
+	which.to.add <- seq(1, length(demeaned), 1)
+	last.sign.period <- max(subset(which.to.add, sig.changes == TRUE))
+
+	if(is.null(period)) { # If we're not calculating based on a period
+		last.period <- last.sign.period
+		t.spikes <- sum(dists[shocktime:last.period])
+		a.t.spikes <- sum(abs.dists[shocktime:last.period])
+		t.innov <- sum(innov[shocktime:last.period])
+		a.t.innov <- sum(abs.innov[shocktime:last.period])		
+		t.trian <- sum(triangles[shocktime:last.period])
+		a.t.trian <- sum(abs.triangles[shocktime:last.period])
+		t.trirect <- sum(triangles.rectangles[shocktime:last.period])
+		a.t.trirect <- sum(abs.triangles.rectangles[shocktime:last.period])
+	} else { # If we ARE calculating based on a period
+		last.period <- shocktime + period
+		if(last.period > max(x$simulation$time)) { # If the user wants more periods than are available ...
+			last.period <- max(x$simulation$time)
+			warning(paste(paste("Length of effect (period) requested exceeds simulation length. Effect calculated for"), paste(last.period - shocktime), paste("periods."), sep = " "))	
+		}
+		if(last.period < last.sign.period) { # If the user wants a period but Y could still be responding ...
+			warning(paste(paste("Y might still be changing after"), paste(period), paste("period(s). Consider lengthening the number of periods included in calculated effect."), sep = " "))	
+		}
+		t.spikes <- sum(dists[shocktime:last.period])
+		a.t.spikes <- sum(abs.dists[shocktime:last.period])
+		t.innov <- sum(innov[shocktime:last.period])
+		a.t.innov <- sum(abs.innov[shocktime:last.period])
+		t.trian <- sum(triangles[shocktime:last.period])
+		a.t.trian <- sum(abs.triangles[shocktime:last.period])
+		t.trirect <- sum(triangles.rectangles[shocktime:last.period])
+		a.t.trirect <- sum(abs.triangles.rectangles[shocktime:last.period])
+	}
+	# Now issue a few warnings
+	if(last.sign.period == max(which.to.add)) { # If the simulation isn't long enough, potentially
+		warning(paste(paste("Y might still be changing at the end of the simulation. Consider lengthening the simulation beyond range ="), paste(max(which.to.add)), paste("periods in dynardl()."), sep = " "))
+	}
+	if(!(min(x$simulation$ul75) < max(x$simulation$ll75))) { # If there is overlap in the significant regions ...
+		warning(paste("Use caution, as the effect of X on Y might not be meaningfully different from 0: upper 75% interval overlaps with lower 75% interval."))
+	}
+	if(is.null(x.lag)) {
+		immediate <- demeaned[shocktime] - demeaned[shocktime - 1]
+	} else {
+		immediate <- demeaned[shocktime + x.lag] - demeaned[shocktime + x.lag - 1]
+	}
+	quantities <- data.frame(immediate, t.spikes, a.t.spikes, t.innov, a.t.innov, t.trian, a.t.trian, t.trirect, a.t.trirect)
+	names(quantities) <- c("immediate.effect", "sum.spike.lengths", "sum.abs.spike.lengths", "sum.innovations", "sum.abs.innovations",
+		"sum.innovation.area", "sum.abs.innovation.area", "sum.total.area", "sum.abs.total.area")
+	out <- list(areas, quantities)
+	names(out) <- c("areas", "quantities")
+	
+	# Output
+	flush.console()
+	cat("\n",
+		"------------------------------------------------------", "\n")
+		if(is.null(x.lag)) {
+			cat(paste(" Immediate (shock period) effect:", round(out$quantities$immediate.effect, digits = 3), sep = " "), "\n")
+		} else {
+			cat(paste(" Immediate (shock period) effect:", round(out$quantities$immediate.effect, digits = 3), "adjusted by", x.lag, "period(s) for the lag of X.", sep = " "), "\n")
+		}
+		cat(
+		" ------------------------------------------------------", "\n",
+		paste("Net sum of spikes:", round(out$quantities$sum.spike.lengths, digits = 3), sep = " "), "\n",
+		paste("Absolute sum of spikes:", round(out$quantities$sum.abs.spike.lengths, digits = 3), sep = " "), "\n",
+		paste("Net sum of innovations:", round(out$quantities$sum.innovations, digits = 3), sep = " "), "\n",
+		paste("Absolute sum of innovations:", round(out$quantities$sum.abs.innovations, digits = 3), sep = " "), "\n",
+		paste("Net area of innovations:", round(out$quantities$sum.innovation.area, digits = 3), sep = " "), "\n",
+		paste("Absolute area of innovations:", round(out$quantities$sum.abs.innovation.area, digits = 3), sep = " "), "\n",
+		paste("Net sum of area under curve:", round(out$quantities$sum.total.area, digits = 3), sep = " "), "\n",
+		paste("Absolute sum of area under curve:", round(out$quantities$sum.abs.total.area, digits = 3), sep = " "), "\n",
+		paste("Calculated on", paste(last.period - shocktime), paste("periods."), sep = " "), "\n",
+		"------------------------------------------------------", "\n")
+	if(object.out == TRUE) {
+		out
 	}	
 }
 
