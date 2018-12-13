@@ -40,7 +40,6 @@ environment:
   - R_VERSION: 3.5.0
     RTOOLS_VERSION: 35
     CRAN: http://cran.rstudio.com
-    PKGTYPE: source
 
 matrix:
   fast_finish: true
