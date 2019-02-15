@@ -22,7 +22,9 @@ library(dynamac)
 You should now be able to use the package.
 
 ## Installation (Stata)
-To install `dynamac` in Stata, you can download this [zip file](https://andyphilips.github.io/dynamac/Stata/dynamac.zip) and either call directly to the .ado files or place them in your "ado/plus/" folder. A SSC version will be added soon.
+To install `dynamac` in Stata, type "net sj 18-4 st0545" into Stata, or "findit dynamac".
+
+Alternatively, you can download this [zip file](https://andyphilips.github.io/dynamac/Stata/dynamac.zip) and either call directly to the .ado files or place them in your "ado/plus/" folder.
 
 ## I've found a bug!
 Great! Please post it on the [issues page](https://github.com/andyphilips/dynamac/issues), or email the authors.
