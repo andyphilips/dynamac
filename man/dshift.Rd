@@ -2,7 +2,7 @@
 % Please edit documentation in R/dynamac.R
 \name{dshift}
 \alias{dshift}
-\title{Take first difference of a series.}
+\title{Take first difference of a series}
 \usage{
 dshift(x)
 }
@@ -13,10 +13,10 @@ dshift(x)
 the differenced series
 }
 \description{
-Take first difference of a series.
+Take first difference of a series
 }
 \details{
-\code{dshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
+\code{dshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even
 }
 \examples{
 x.var <- seq(0, 50, 5)

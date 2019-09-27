@@ -97,6 +97,7 @@ pssbounds(res2)
 #  summary(res2)
 
 ## ------------------------------------------------------------------------
+set.seed(020990)
 res2 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
@@ -106,17 +107,20 @@ res2 <- dynardl(concern ~ incshare10 + urate, data = ineq,
 summary(res2$model)
 
 ## ------------------------------------------------------------------------
-area.simulation.plot(res2)
+dynardl.simulation.plot(res2, type = "area", response = "levels")
 
 ## ------------------------------------------------------------------------
+set.seed(020990)
 res3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
         lagdiffs = list("concern" = 1),
         ec = TRUE, simulate = TRUE, range = 30,
         shockvar = "incshare10")
-area.simulation.plot(res3)
-spike.simulation.plot(res3)
+dynardl.simulation.plot(res3, type = "area", response = "levels")
+
+## ------------------------------------------------------------------------
+dynardl.simulation.plot(res3, type = "spike", response = "levels")
 
 ## ------------------------------------------------------------------------
 res3$model
@@ -124,20 +128,45 @@ res3$pssbounds
 res3$simulation
 
 ## ------------------------------------------------------------------------
+set.seed(020990)
 res4 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
         lagdiffs = list("concern" = 1),
         ec = TRUE, simulate = TRUE, range = 30, sims = 10000,
         shockvar = "incshare10")
-area.simulation.plot(res4, response = "mean.changes", bw = TRUE)
+dynardl.simulation.plot(res4, type = "spike", response = "levels", bw = TRUE)
 
 ## ------------------------------------------------------------------------
+set.seed(020990)
 res5 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
         lagdiffs = list("concern" = 1),
         ec = TRUE, simulate = TRUE, range = 30,
         shockvar = "incshare10", qoi = "median")
-area.simulation.plot(res5)
+dynardl.simulation.plot(res5, type = "area", response = "levels")
+
+## ------------------------------------------------------------------------
+set.seed(020990)
+res6 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+        lags = list("concern" = 1, "incshare10" = 1),
+        diffs = c("incshare10", "urate"), 
+        lagdiffs = list("concern" = 1),
+        ec = TRUE, simulate = TRUE, range = 30,
+        shockvar = "incshare10", fullsims = TRUE)
+
+par(mfrow = c(2, 3))
+dynardl.simulation.plot(res6, type = "area", response = "levels")
+dynardl.simulation.plot(res6, type = "area", response = "levels.from.mean")
+dynardl.simulation.plot(res6, type = "area", response = "diffs")
+dynardl.simulation.plot(res6, type = "area", response = "shock.effect.decay")
+dynardl.simulation.plot(res6, type = "area", response = "cumulative.diffs", axes = F)
+dynardl.simulation.plot(res6, type = "area", response = "cumulative.abs.diffs")
+
+## ------------------------------------------------------------------------
+dynardl.simulation.plot(res6, response = "shock.effect.decay", start.period = 9)
+
+## ------------------------------------------------------------------------
+dynardl.all.plots(res6)
 

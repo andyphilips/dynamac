@@ -2,7 +2,7 @@
 % Please edit documentation in R/dynamac.R
 \name{summary.dynardl}
 \alias{summary.dynardl}
-\title{Enable summary calls to dynardl model objects.}
+\title{Enable summary calls to \code{\link{dynardl}} model objects}
 \usage{
 \method{summary}{dynardl}(object, ...)
 }
@@ -15,11 +15,11 @@
 A summary of the fitted ARDL model.
 }
 \description{
-Enable summary calls to dynardl model objects.
+Enable summary calls to \code{\link{dynardl}} model objects
 }
 \details{
 \code{dynardl}, by default, stores regression results in \code{foo$model}. This calls those results 
-directly with \code{summary}.
+directly with \code{summary}
 }
 \examples{
 # Using the ineq data from dynamac

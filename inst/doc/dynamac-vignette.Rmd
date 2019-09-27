@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 bibliography: timeseriesrj.bib
 vignette: >
-  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteIndexEntry{dynamac Vignette}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -17,7 +17,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-Autoregressive distributed lag (ARDL) models are an integral part of estimating scientific processes over time. However, as we extend their usefulness by adding richness in dynamic specifications (through multiple lags of variables, either in levels or differences, or lags of the dependent variable), we really begin to challenge our ability to draw meaningful inferences from coefficients alone. Variables may appear in multiple time periods, in multiple forms, and might even be filtered through lagged values of the dependent variable. Coefficients tell us about the immediate effect of some variable but really have little to say about the long-run effect. 
+Autoregressive distributed lag (ARDL) models are an integral part of estimating scientific processes over time. However, as we extend their usefulness by adding richness in dynamic specifications (through multiple lags of variables, either in levels or differences, or lags of the dependent variable), we begin to challenge our ability to draw meaningful inferences from coefficients alone. Variables may appear in multiple time periods, in multiple forms, and might even be filtered through lagged values of the dependent variable. Coefficients tell us about the immediate effect of some variable but have little to say about the long-run effect. 
 
 There is a better solution. Instead of performing intense operations to develop a closed-form or algebraic solution, we can rely on the power of computing to *simulate* the over-time response in the dependent variable of some model, given a corresponding change in an $x$ variable. We often call these "changes" in $x$ variables, and the associated response in the dependent variable $y$, a "counterfactual response" (a simulated response to a "shock" we control).
 
@@ -27,14 +27,14 @@ We illustrate the usefulness of these functions through example. After a brief d
 
 ## ARDL models generally
 
-The ARDL model has a general form where $y$, modeled in levels or differences, can depend on itself (in lagged levels or differences), up to $k$ variables $x$, either in contemporaneous (same period, or appearing at time $t$) levels, lagged levels, contemporaneous differences, or lagged differences. Conventionally, the number of lags of the dependent variable in levels is counted by $p$, the number of lags of the dependent variable in differences is counted by $m$, the number of lags of the independent variables in levels is counted by $l$, and the number of lags of the independent variables in differences is counted by $q$ (note: $l$ and $q$ can begin at 0, or contemporaneous effects). 
+The ARDL model has a general form where $y$, modeled in levels or differences, can depend on itself (in lagged levels or differences), up to $k$ variables $x$, either in contemporaneous (same period, or appearing at time $t$) levels, lagged levels, contemporaneous differences, or lagged differences. Conventionally, the number of lags of the dependent variable in levels is counted by $p$, the number of lags of the dependent variable in differences is counted by $m$, the number of lags of the independent variables in levels is counted by $l$, and the number of lags of the independent variables in differences is counted by $q$ (note: $l$ and $q$ can begin at 0, i.e, contemporaneous effects appearing at time $t$). 
 
 The number of time periods of each variable can, theoretically, be quite large. Or, put differently, $p$, $m$, $l$, and $q$, especially $l$ and $q$, might be hard to account for. Analysts without strong theory about the period of the effects often begin with a reasonable one-period restriction, or an ARDL model of the nature 
 
 $$y_t =  \alpha_0 + \phi_1 y_{t-1} + \theta_{1,0} x_{1,t} + \theta_{1,1} x_{1,t-1} + \cdots + \theta_{k,0}x_{k,t} + \theta_{k,1}x_{k,t-1}+ \beta *T  + \epsilon_t$$
 where $\alpha_0$ is a constant and $\beta$ is a trend term. (The exact nature of this equation depends on whether $y$ is stationary or integrated, as well as if differences or lagged differences are entered into the model. But we will get to this below.)
 
-It's useful at this point to stop and think: if I have multiple lags of a variable $x$, and they are filtered through a lagged dependent variable $y_{t-1}$, it might be difficult to get a sense of the "total" effect of $x$ on $y$. This becomes more and more difficult as $x$ increases in lagged levels $l$ *and potentially also* lagged differences $q$. Our coefficient estimates, while useful as estimates, are no longer as useful in direct interpretation. Put differently, the very flexibility of the ARDL model also undoes its usefulness in interpretation! So we might seek an alternative way of interpreting these models. dynamac provides a unified way of estimating ARDL models and interpreting their effects. It also provides a way of implementing a popular test for cointegration. We uncover these methods below. 
+It's useful at this point to stop and think: if I have multiple lags of a variable $x$, and they are filtered through a lagged dependent variable $y_{t-1}$, it might be difficult to get a sense of the "total" effect of $x$ on $y$. This becomes more and more difficult as $x$ increases in lagged levels $l$ *and potentially also* lagged differences $q$. Our coefficient estimates, while estimated, are no longer as useful in direct interpretation. Put differently, the very flexibility of the ARDL model also undoes its usefulness in interpretation! So we might seek an alternative way of interpreting these models. dynamac provides a unified way of estimating ARDL models and interpreting their effects. It also provides a way of implementing a popular test for cointegration. We uncover these methods below. 
 
 ## Estimating an ARDL model: best practices and dynamac
 
@@ -53,7 +53,7 @@ where the residuals are white noise. Let's develop the corresponding ARDL model 
 
 ### Understanding our time series
 
-Step 1 in any time series analysis is a visual inspection of the series coupled with formal tests of stationarity: whether the series has a constant mean, variance, and covariance over time (so that it reverts back to mean level), or if the series instead violates any of these three conditions. We advocate for the urca package [@pfaff2016package] which includes a variety of tools and tests. Simply plotting the series reveals the following:
+Step 1 in any time series analysis is a visual inspection of the series coupled with formal tests of stationarity: whether the series has a constant mean, variance, and covariance over time (so that it reverts back to mean level), or if the series instead violates any of these three conditions. We advocate for using the urca package for this [@pfaff2016package], which includes a variety of tools and tests. Simply plotting the series reveals the following:
 
 ```{r}
 library(urca)
@@ -84,7 +84,7 @@ Each of the above tests, when run, indicated that the differenced series of `con
 
 ### Estimating ARDL models with `dynardl` 
 
-ARDL models are flexible, but their flexibility often results in variables of different lengths due to differencing and lagging. For instance, consider our simple model from above where `incshare10` appears as a first lag and a first difference, `urate` appears as a first difference, there is a lagged dependent variable, and `concern` is the dependent variable in differences. We can introduce a lag through the build in `lshift` command in dynamac. The syntax is just `lshift(variable, num.lags)`, where `num.lags` is the number of periods for the variable to be lagged. We can also difference a series through `dshift`. The syntax is just `dshift(variable)` for a first difference. For instance, 
+ARDL models are flexible, but their flexibility often results in variables of different lengths due to differencing and lagging. For instance, consider our simple model from above where `incshare10` appears as a first lag and a first difference, `urate` appears as a first difference, there is a lagged dependent variable, and `concern` is the dependent variable in differences. We can introduce a lag through the build in `lshift` function in dynamac. The syntax is just `lshift(variable, num.lags)`, where `num.lags` is the number of periods for the variable to be lagged. We can also difference a series through `dshift`. The syntax is just `dshift(variable)` for a first difference. For instance, 
 
 ```{r}
 head(ineq$incshare10)
@@ -98,7 +98,7 @@ So the syntax for the simple model described would be easy to write. But notice 
 summary(lm(diff(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1) + dshift(ineq$incshare10) + dshift(ineq$urate)))
 ```
 
-Introducing the lag changed the variable lengths, and we probably don't want to have to think about time series operation in our model specification, anyway. Other programs unified this operation by introducing a common syntax, like d. for differencing and l. for lagging, or even l.d. for lag differences (what program could that be?). In R, though, it remains more of a nuisance than it should be. The `dynardl` command helps to remedy this challenge by encouraging the user only to think about model structure in exactly the way outlined above: which variables $x$ get lags $l$ and lagged differences $q$, etc. The command expects a basic formula of all the variables in the model, the data set (`data`), if there is one, then lagged levels (`lags`) and lagged differences (`lagdiffs`) as a list and differences (`diffs`) and contemporaneous levels (`levels`) as a vector. The sole exception is if the user wants to run the model in differences, s/he needs to specify `ec = TRUE` (in an effort to force us to think critically about the error-correction form of the model). For instance, our above model now becomes (ignoring the `simulate` option for now)
+Introducing the lag changed the variable lengths, and we probably don't want to have to think about time series operation in our model specification, anyway. Other software has unified this operation by introducing a common syntax, like d. for differencing and l. for lagging, or even l.d. for lag differences (what program could that be?). In R, though, it remains more of a nuisance than it should be. The `dynardl` function helps to remedy this challenge by encouraging the user only to think about model structure in exactly the way outlined above: which variables $x$ get lags $l$ and lagged differences $q$, etc. The function expects a basic formula of all the variables in the model, the data set (`data`), if there is one, then lagged levels (`lags`) and lagged differences (`lagdiffs`) as a list and differences (`diffs`) and contemporaneous levels (`levels`) as a vector. The sole exception is if the user wants to run the model in differences, s/he needs to specify `ec = TRUE` (in an effort to force us to think critically about the error-correction form of the model). For instance, our above model now becomes (ignoring the `simulate` option for now)
 
 ```{r, eval = FALSE}
 dynardl(concern ~ incshare10 + urate, data = ineq, 
@@ -125,7 +125,7 @@ At this point, `dynardl` is just a unifying way of thinking about time series mo
 
 ### Cointegration testing using the ARDL-bounds procedure and `pssbounds`
 
-The ARDL-bounds procedure begins with two preliminaries. First, we must ensure that the regressors are not of order I(2) or more and that any seasonal components have been removed. We demonstrated this above when we found that the first-difference of `incshare10` and `urate` were both stationary. In addition, there were no seasonal components, looking at the series. Second, we must ensure that the dependent variable *is* integrated of order I(1). And again, above, we demonstrated that `incshare10` is integrated.
+The ARDL-bounds procedure begins with two preliminaries. First, we must ensure that the regressors are not of order I(2) or more and that any seasonal components have been removed. We demonstrated this above when we found that the first-difference of `incshare10` and `urate` were both stationary. In addition, there were no seasonal components, looking at the series (although more formal diagnostics are probably warranted). Second, we must ensure that the dependent variable *is* integrated of order I(1). And again, above, we demonstrated that `incshare10` is integrated.
 
 The next step in ARDL-bounds is to estimate the error-correction form of the model. Two points are key: the independent variables that are potentially I(1) must be entered in levels, and the resulting residuals of the error-correction ARDL model must be white noise (random with no residual autocorrelation). Here, that means that we run our dependent variable in differences, we include the lagged levels of the dependent variable, we include the levels of the potentially error-correcting variable, `incshare10`, and the short-run effects of `urate` through differences. Returning to our model above, and using `dynardl`, this is now straightforward: 
 
@@ -163,7 +163,7 @@ length(res2$model$residuals)
 
 We can now be much more confident that there is no more autocorrelation in the residuals. At this point, we can execute the ARDL-bounds test procedure. We need a few pieces of information: the length of the time series, the $t$-statistic on the lagged dependent variable in the ARDL error-correction model, the "case" of the regression (a combination of whether the intercept, if any, and trend, if any, were restricted [@pesaran2001bounds]), and the number of regressors $k$ appearing in first lags (NOT including the lagged dependent variable). We also need the number of observations in the model time series and the $F$-statistic on the restriction that the first lags of each of the variables in the model are jointly equal to zero.
 
-From our regression, we know the $t$-statistic on the lagged dependent variable is -3.684 (just looking at the output). Additionally, we estimated a model with an unrestricted intercept and no trend, which happens to be case 3 (we know: we'll return to this in a moment). There are $k = 1$ variables in first lags (`incshare10`), and the number of `obs` in the model is 47 periods. We now only need the test of the restriction that the first lags are equal to zero. We can calculate this by hand through coefficient testing. If we have all of the coefficients, we just need to compare them to the set that are lagged levels:
+From our regression, we know the $t$-statistic on the lagged dependent variable is -3.684 (just looking at the output). Additionally, we estimated a model with an unrestricted intercept and no trend, which happens to be case 3 (which we might not know without referencing [@pesaran2001bounds]). There are $k = 1$ variables in first lags (`incshare10`), and the number of `obs` in the model is 47 periods. We now only need the test of the restriction that the first lags are equal to zero. We can calculate this by hand through coefficient testing. If we have all of the coefficients, we just need to compare them to the set that are lagged levels:
 
 ```{r}
 coef(res2$model)
@@ -189,19 +189,19 @@ Finally, a payoff. The $t$-statistic and $F$-statistic are situated between spec
 
 In our model here, since the value of the $F$-statistic exceeds the critical value at the upper I(1) bound of the test at the 5% level, we may conclude that Income Top 10 (the variable in the model in levels) and the dependent variable, Concern, are in a cointegrating relationship. This is furthered by the $t$-statistic of -3.684 falling below the 5% critical value for I(1). Thus, we can be confident both in our model specification and the unique, long-run relationship that exists between the two variables.
 
-Calculating all of those values by hand was unnecessarily involved, especially since we know most of the values are saved post-estimation anyway. Thus, our preferred way of estimating the ARDL-bounds test is just by passing the model to `pssbounds`. In other words, the test is equivalent by just running
+Calculating all of those values by hand was unnecessarily involved, especially since we know most of the values are saved post-estimation anyway. We're further motivated not to have to reference [@pesaran2001bounds] for the case of the regression every time we run `pssbounds`. Thus, our preferred way of estimating the ARDL-bounds test is just by passing the error-correction model to `pssbounds`. In other words, the test is equivalent by just running
 
 ```{r}
 pssbounds(res2)
 ```
 
-Any `dynardl` object run in an error-correction format is available for `pssbounds` post-estimation. This, of course, is not meant to imply that all `dynardl` models are meant to be tested for cointegration. Stationary variables cannot be cointegrated with other variables. As such, we would want to run those models in levels, with `EC = FALSE`. Like always, we point users to the importance of pre-regression testing of the nature of our variables, most specifically whether or not they are integrated. `dynardl` will attempt to be as helpful as possible, but in the end, only the user knows which model is appropriate and specifies that model correctly.
+Any `dynardl` object run in an error-correction format is available for `pssbounds` post-estimation. This, of course, is not meant to imply that all `dynardl` models are meant to be tested for cointegration. Stationary variables cannot be cointegrated with other variables. As such, we would want to run those models in levels, with `EC = FALSE`. Like always, we point users to the importance of pre-regression testing of the nature of our variables, most specifically whether or not they are integrated. `dynardl` will attempt to be as helpful as possible, but in the end, it is up to the user to know which model is appropriate and to ensure that the model is specified correctly.
 
-We had another motivation. `dynardl` + `pssbounds` are a powerful combination for estimating and testing for cointegration in a unified framework. But once we have tested for cointegration, we still want inferences about the nature of the effect of some $x$ variable on the dependent variable. And these inferences become much more difficult to obtain as our models increase in complexity. In the next section, we elaborate on the ability of `dynardl` to provide these inferences through the process we outlined earlier: counterfactual simulation of a response to a shock in some $x$ variable. These inferences do not require anything beyond what we have already covered: a `dynardl` model and a theoretically interesting $x$ variable.
+We had another motivation. `dynardl` + `pssbounds` are a powerful combination for estimating and testing for cointegration in a unified framework. But once we have tested for cointegration, we still want inferences about the nature of the effect of some $x$ variable on the dependent variable. And these inferences become much more difficult to obtain as our models increase in complexity. For instance, the very lagged difference of $y$ that we introduced to help purge autocorrelation from the model we just estimated made interpreting the coefficients from that model much less straightforward. In the next section, we elaborate on the ability of `dynardl` to provide these inferences through the process we outlined earlier: counterfactual simulation of a response to a shock in some $x$ variable. These inferences do not require anything beyond what we have already covered: a `dynardl` model and a theoretically interesting $x$ variable.
 
 ### Counterfactual simulation using `dynardl`
 
-ARDL models are useful because they are flexible, but their flexibility undermines our ability to make cumulative sense of the coefficients estimated in any given model. An alternative approach to interpretation is to use the coefficients from an estimated model to simulate meaningful responses in the dependent variable to counterfactual changes in an independent variable $x$ (that we control), allowing the change to filter through the various forms of the $x$ variable in the model, as well as different forms of the $y$ variable (like differences and lagged levels) that might be included. 
+ARDL models are useful because they are flexible, but their flexibility undermines our ability to make sense of the coefficients estimated in any given model. An alternative approach to interpretation is to use the coefficients from an estimated model to simulate meaningful responses in the dependent variable to counterfactual changes in an independent variable $x$ (that we control), allowing the change to filter through the various forms of the $x$ variable in the model, as well as different forms of the $y$ variable (like differences and lagged levels) that might be included. 
 
 dynamac handles this simulated interpretation through a function we have already seen: `dynardl`. All we need to do is specify that `simulate = TRUE`, and we will produce simulated responses: we can observe how a change to a variable in a `dynardl` model produces a corresponding change in the dependent variable. Other arguments are required, but only one has no default: we need to know which $x$ variable to simulate a shock to (the `shockvar`). This "shock" means that, at a time specified by the user, the value of an $x$ variable will move to some level. If the variable is in levels or lagged levels, this means that its new value becomes the pre-shock average plus whatever the shock value is. If the variable is in differences or lagged differences, the shock lasts for one period (as a permanent change in a differenced variable would imply that it is changing every period!).
 
@@ -222,9 +222,10 @@ res2 <- dynardl(concern ~ incshare10 + urate, data = ineq,
 summary(res2)
 ```
 
-Here, we set `simulate = FALSE` because we were just illustrating estimation without simulations (given that simulations take a few seconds to estimate, we may only want to simulate changes when we have a final model, free of autocorrelation and the other things we tested for). Now, we'll turn `simulate = TRUE` and specify an $x$ variable to observe the response of. We'll observe the changes resulting from `incshare10`, given its lagged level demonstrated a significant effect. In other words, our `shockvar = "incshare10"`. By default, `dynardl` will shock it by its standard deviation, but we can observe any change we like with `shockval`.
+Here, we set `simulate = FALSE` because we were just illustrating estimation without simulations (given that simulations take a few seconds to estimate, we may only want to simulate changes when we have a final model, free of autocorrelation and the other things we tested for). Now, we'll turn `simulate = TRUE` and specify an $x$ variable to observe the response of. We'll observe the changes resulting from `incshare10`, given its lagged level demonstrated a significant effect. In other words, our `shockvar = "incshare10"`. By default, `dynardl` will shock it by its standard deviation, but we can observe any change we like with `shockval`. As with any other time in which stochastic values are involved, we should set a seed to ensure our results are directly replicable.
 
 ```{r}
+set.seed(020990)
 res2 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
@@ -234,26 +235,32 @@ res2 <- dynardl(concern ~ incshare10 + urate, data = ineq,
 summary(res2$model)
 ```
 
-It looks somewhat goofy in the vignette, as `dynardl` displays a progress bar to inform you of how many simulations have been completed. But the payoff is in `res2$simulation`. We get to observe the effect of a standard-deviation shock in `incshare10` in the dependent variable. This response is best visualized in a plot.  To see this plot, the model can be saved to an object, and plots can be created with two commands: `area.simulation.plot` and `spike.simulation.plot`.
+It looks somewhat goofy in the vignette, as `dynardl` displays a progress bar to inform you of how many simulations have been completed. But the payoff is in `res2$simulation`. We get to observe the effect of a standard-deviation shock in `incshare10` in the dependent variable. This response is best visualized in a plot.  To see this plot, the model can be saved to an object, and plots can be created with `dynardl.simulation.plot`.
 
 ```{r}
-area.simulation.plot(res2)
+dynardl.simulation.plot(res2, type = "area", response = "levels")
 ```
 
 Here, the shock has an immediate effect that does not dissipate for a long time. So long, in fact, that we might want to lengthen the `range` of the simulation. 
 
 ```{r}
+set.seed(020990)
 res3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
         lagdiffs = list("concern" = 1),
         ec = TRUE, simulate = TRUE, range = 30,
         shockvar = "incshare10")
-area.simulation.plot(res3)
-spike.simulation.plot(res3)
+dynardl.simulation.plot(res3, type = "area", response = "levels")
 ```
 
-In `res3` there are actually three sets of output. The first is the model, the second is the information for `pssbounds`, and the last is for plotting. We mention this so that users can use their usual TeX shortcuts for creating tables, customize plots, or test pssbounds later.
+If instead of an area plot we desired a spike plot:
+
+```{r}
+dynardl.simulation.plot(res3, type = "spike", response = "levels")
+```
+
+In `res3` there are actually three sets of output. The first is the model, the second is the information for `pssbounds`, and the last is for plotting. We mention this so that users can use their usual TeX shortcuts for creating tables, customizing plots, or testing using pssbounds later.
 
 ```{r}
 res3$model
@@ -263,38 +270,73 @@ res3$simulation
 
 Only models where `ec = TRUE` will have `$pssbounds` information, as only those models can possibly be testing a cointegrating relationship. We suspect that no one will need them by hand, as you can just pass the whole object via `pssbounds(res3)` to get the same results. 
 
-Other options might be of interest. In order to smooth our confidence intervals (note: NOT make us more confident), we can increase the number of simulations. Additionally, both of the plotting functions allow the user to produce plot in grayscale (for publications), as well as showing deviations from the mean of $y$ (`response = "mean.changes"`), rather than some level (that depends on the averages of the $x$ variables). Consider the following (notice the `sims` argument of `dynardl` and the new arguments under `area.simulation.plot`, as well as the new y-axis in the following figure):
+Other options might be of interest. In order to smooth our confidence intervals (note: this does NOT make us more confident), we can increase the number of simulations. Additionally, the plotting function allows the user to produce plot in grayscale (for publications). Consider the following (notice the `sims` argument of `dynardl` and the new arguments under `dynardl.simulation.plot`:
 
 ```{r}
+set.seed(020990)
 res4 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
         lagdiffs = list("concern" = 1),
         ec = TRUE, simulate = TRUE, range = 30, sims = 10000,
         shockvar = "incshare10")
-area.simulation.plot(res4, response = "mean.changes", bw = TRUE)
+dynardl.simulation.plot(res4, type = "spike", response = "levels", bw = TRUE)
 ```
 
 The full extent of these options is addressed in the documentation.
 
-Finally, there is some question as to whether or not quantities of interest from these types of stochastic simulations are best summarized by the means or the medians of the resulting distributions. In most cases, the difference is likely to be minimal. In cases of skew, though, the median might serve significantly better than the mean (described in [-@raineytransform]). Here, we can do that by setting `qoi = median`. 
+There is some question as to whether or not quantities of interest from these types of stochastic simulations are best summarized by the means or the medians of the resulting distributions. In most cases, the difference is likely to be minimal. In cases of skew, though, the median might serve significantly better than the mean (described in [-@raineytransform]). Here, we can do that by setting `qoi = median`. 
 
 ```{r}
+set.seed(020990)
 res5 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
         lags = list("concern" = 1, "incshare10" = 1),
         diffs = c("incshare10", "urate"), 
         lagdiffs = list("concern" = 1),
         ec = TRUE, simulate = TRUE, range = 30,
         shockvar = "incshare10", qoi = "median")
-area.simulation.plot(res5)
+dynardl.simulation.plot(res5, type = "area", response = "levels")
 ```
 
+There are a variety of quantities that are plottable from the simulations, outside of just the response of the dependent variable. `dynardl.simulation.plot` includes options for plotting the `levels` of the dependent variable, the levels but demeaned (`levels.from.mean`) of the dependent variable, and the period-over-period `diffs` of the changes in the simulated values. You can get a sense of how the shock to the independent variable is decaying through time by observing the differences in each period as an absolute value (how much is the dependent variable adjusting) through `shock.effect.decay.` You can also see the `cumulative.diffs` of those changes and the absolute value of the changes `cumulative.abs.diffs`. For the final two options, `fullsims = TRUE` must be specified in the `dynardl` simulation, which reports the full raw simulated values as a part of the `dynardl` object. These values are used to draw confidence intervals over the simulated changes. 
+
+In addition, `dynardl.simulation.plot` will expect a value for when it should regard the changes in the dependent variable as noise, rather than *real* changes. The default `tol` is to disregard changes that are less than 0.1% of the mean of the dependent variable. Alternatively, we can specify a `last.period` in which we believe the dependent variable is responding. `dynardl.simulation.plot` also allows you to pass whatever normal plotting arguments you would use in the normal `...` way.
+
+```{r}
+set.seed(020990)
+res6 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+        lags = list("concern" = 1, "incshare10" = 1),
+        diffs = c("incshare10", "urate"), 
+        lagdiffs = list("concern" = 1),
+        ec = TRUE, simulate = TRUE, range = 30,
+        shockvar = "incshare10", fullsims = TRUE)
+
+par(mfrow = c(2, 3))
+dynardl.simulation.plot(res6, type = "area", response = "levels")
+dynardl.simulation.plot(res6, type = "area", response = "levels.from.mean")
+dynardl.simulation.plot(res6, type = "area", response = "diffs")
+dynardl.simulation.plot(res6, type = "area", response = "shock.effect.decay")
+dynardl.simulation.plot(res6, type = "area", response = "cumulative.diffs", axes = F)
+dynardl.simulation.plot(res6, type = "area", response = "cumulative.abs.diffs")
+```
+
+If we don't want to see the equilibriating behavior before the shock, we can draw the plot starting in a different period through `start.period.`
+
+```{r}
+dynardl.simulation.plot(res6, response = "shock.effect.decay", start.period = 9)
+```
+
+If you're in an exploratory phase of model building and prefer not to have to run the plots separately, you are free to combine all of them using `dynardl.all.plots`. 
+
+```{r}
+dynardl.all.plots(res6)
+```
 
 ## Being smart(er than `dynardl`) about data and modeling
 
-dynamac is meant to be a unifying package for estimating and interpreting times series ARDL models. It is not, though, a data manager. It assumes that your data are ordered, that the progression between time series makes sense (i.e. there is a consistent unit of time separating the ordered observations), that there are not problematic missing values, and other usual pre-estimation data considerations. Users should know and explore their datasets well before passing those data to any statistical software.
+dynamac is meant to be a unifying package for estimating and interpreting times series ARDL models. It is not, however, a data manager. It assumes that your data are ordered, that the progression between time series makes sense (i.e. there is a consistent unit of time separating the ordered observations), that there are not problematic missing values, and that all the other usual pre-estimation data testing has been performed by the user. Users should know and explore their datasets well before passing those data to any statistical software.
 
-Nor will dynamac stop you from running "bad idea" models. Users should be careful about the order of integration in their variables, whether seasonal unit roots are present, if variables have nuanced lagged-difference structures, and so on. We offer commands (like `dynardl.auto.correlated`) to help users make these decisions on their path to a final model. But care must be taken at every step.
+Nor will dynamac stop you from running "bad idea" models. Users should be careful about the order of integration in their variables, whether seasonal unit roots are present, if variables have nuanced lagged-difference structures, and so on. We offer functions (like `dynardl.auto.correlated`) to help users make these decisions on their path to a final model. But care must be taken at every step.
 
 ## Bibliography
 

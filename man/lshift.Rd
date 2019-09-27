@@ -2,7 +2,7 @@
 % Please edit documentation in R/dynamac.R
 \name{lshift}
 \alias{lshift}
-\title{Take lag transformation of a series.}
+\title{Take lag transformation of a series}
 \usage{
 lshift(x, l)
 }
@@ -15,10 +15,10 @@ lshift(x, l)
 the lagged series
 }
 \description{
-Take lag transformation of a series.
+Take lag transformation of a series
 }
 \details{
-\code{lshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
+\code{lshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even
 }
 \examples{
 x.var <- runif(50)

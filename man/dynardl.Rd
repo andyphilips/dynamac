@@ -2,63 +2,67 @@
 % Please edit documentation in R/dynamac.R
 \name{dynardl}
 \alias{dynardl}
-\title{Estimate and Simulate ARDL Model}
+\title{Estimate and simulate ARDL model}
 \usage{
 dynardl(formula, data = list(), lags = list(), diffs = list(),
   lagdiffs = list(), levels = list(), ec = FALSE, trend = FALSE,
   constant = TRUE, modelout = FALSE, simulate = FALSE,
-  shockvar = list(), shockval = sd(data[[shockvar]]), time = 10,
-  qoi = "mean", forceset = NULL, range = 20, burnin = 20,
-  sims = 1000, sig = 95, expectedval = FALSE)
+  shockvar = list(), shockval = sd(data[[shockvar]], na.rm = T),
+  time = 10, qoi = "mean", forceset = NULL, range = 20,
+  burnin = 20, sims = 1000, sig = 95, expectedval = FALSE,
+  fullsims = FALSE)
 }
 \arguments{
 \item{formula}{a symbolic description of the model to be estimated. ARDL
-models are estimated using linear regression.}
+models are estimated using linear regression}
 
 \item{data}{an optional data frame or list containing the the variables in
-the model.}
+the model}
 
 \item{lags}{a list of variables and their corresponding lags to be
-estimated.}
+estimated}
 
-\item{diffs}{a vector of variables to be differenced. Only first differences are supported.}
+\item{diffs}{a vector of variables to be differenced. Only first differences are supported}
 
-\item{lagdiffs}{a list of variables to be included in lagged differences.}
+\item{lagdiffs}{a list of variables to be included in lagged differences}
 
-\item{levels}{a vector of variables to be included in levels.}
+\item{levels}{a vector of variables to be included in levels}
 
 \item{ec}{estimate model in error-correction form, (i.e., \code{y} appears
 in first-differences). By default, \code{ec} is set to \code{FALSE},
 meaning \code{y} will appear in levels.}
 
-\item{trend}{include a linear time trend. The default is FALSE.}
+\item{trend}{include a linear time trend. The default is \code{FALSE}}
 
-\item{constant}{include a constant. The default is TRUE.}
+\item{constant}{include a constant. The default is \code{TRUE}}
 
 \item{modelout}{print the regression estimates in the console}
 
 \item{simulate}{simulate the reponse. Otherwise, just the regression model
 will be estimated. If \code{simulate = FALSE}, options \code{shockvar}, \code{shockval}, 
 \code{time}, \code{qoi}, \code{forceset}, \code{range}, \code{burnin}, \code{sims}, 
-\code{sig}, and \code{expectedval}, are ignored. The default is FALSE.}
+\code{sig}, \code{expectedval}, and \code{fullsims} are ignored. The default is \code{FALSE} so
+that users can build models without needing to simulate the results each time. When 
+\code{simulate = TRUE}, users are highly encouraged to set a seed before simulation, as with
+any stochastic exercise}
 
-\item{shockvar}{the variable to be shocked. There is no default.}
+\item{shockvar}{the variable to be shocked in the counterfactual simulation. There is no default}
 
 \item{shockval}{the amount by which the \code{shockvar} should be shocked.
-The default is one standard deviation of the shocked variable.}
+The default is one standard deviation of the shocked variable}
 
 \item{time}{the time period in the simulation for the variable to be
-shocked.}
+shocked}
 
 \item{qoi}{summarize the response of the dependent variable with the mean or the median.
 Although the default is \code{mean}, if there is underlying skew in the 
-distribution, it might be better summarized by \code{median}.}
+distribution, it might be better summarized by \code{median}}
 
 \item{forceset}{by default, in the simulations, variables in levels will be
 set to their means; variables in differences will be set to 0.
 Alternatively, users can set any variable in the model to a different value
 using a list in \code{forceset}. These values can be any user-defined value, 
-including means, medians, percentiles, or other values of interest.}
+including means, medians, percentiles, or other values of interest}
 
 \item{range}{the range of the simulation to be conducted}
 
@@ -66,34 +70,39 @@ including means, medians, percentiles, or other values of interest.}
 values. These do not include the \code{range}; in other words, they take
 place before the \code{range} specified above. Users can increase the
 number of \code{burnin} periods, but probably should not decrease them. The
-default is 20.}
+default is 20}
 
 \item{sims}{the number of simulations to use in creating the quantities of
-interest (the response of the dependent variable). The default is 1000.}
+interest (the response of the dependent variable). The default is 1000}
 
 \item{sig}{the significance level (1 - \code{p}) that the user wants for
 the simulations. The default level is 95\% significance (\code{sig = 95})}
 
 \item{expectedval}{if this is \code{TRUE}, the simulation will record the
-expected values of across the \code{sims} by averaging errors. We recommend
-setting it to \code{FALSE}, since expected values do not account for
-stochastic error present in the model itself.}
+expected values of across the \code{sims} by averaging errors. The default is
+\code{FALSE}, since expected values do not account for
+stochastic error present in the model itself}
+
+\item{fullsims}{whether all of the raw simulations should be stored in the
+model object. These are required for some of the more advanced plotting functions, 
+especially those that use the simulations to derive confidence intervals about
+the size of the period-over-period differences. The default is \code{FALSE}}
 }
 \value{
 \code{dynardl} should always return an estimated model. It may or
 may not be simulated, according to the user. But the relevant regression
 output, model residuals (which can be tested for autocorrelation), and
 simulated response (if created) are stored in a list if the model is
-assigned to an object.
+assigned to an object
 }
 \description{
 Estimate autoregressive distributed lag model and simulate interesting values (if desired)
 }
 \details{
 Estimate an auto-regressive distributed lag model. Moreover, enable a
-graphical interpretation of the results (through \code{area.simulation.plot} or
-\code{spike.simulation.plot}) by simulating the response of 
-the dependent variable to shocks in one of the regressors.
+graphical interpretation of the results (through \code{\link{dynardl.simulation.plot}})
+by simulating the response of 
+the dependent variable to shocks in one of the regressors
 }
 \examples{
 # Using the inequality data from dynamac

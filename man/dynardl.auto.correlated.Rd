@@ -2,7 +2,7 @@
 % Please edit documentation in R/dynamac.R
 \name{dynardl.auto.correlated}
 \alias{dynardl.auto.correlated}
-\title{Run a variety of autocorrelation tests on the residuals from a \code{dynardl} model.}
+\title{Run a variety of autocorrelation tests on the residuals from a \code{\link{dynardl}} model}
 \usage{
 dynardl.auto.correlated(x, bg.type = "Chisq", digits = 3,
   order = NULL, object.out = FALSE)
@@ -10,22 +10,22 @@ dynardl.auto.correlated(x, bg.type = "Chisq", digits = 3,
 \arguments{
 \item{x}{a \code{dynardl} model}
 
-\item{bg.type}{a character string for the type of Breusch-Godfrey test to run. The default is \code{Chisq}: the Chisq test statistic. The other option is \code{F}: the F-test statistic.}
+\item{bg.type}{a character string for the type of Breusch-Godfrey test to run. The default is \code{Chisq}: the Chisq test statistic. The other option is \code{F}: the F-test statistic}
 
-\item{digits}{the number of digits to round to when showing output. We recommend three.}
+\item{digits}{the number of digits to round to when showing output. The default is \code{3}}
 
-\item{order}{the maximum order of serial autocorrelation to test when executing the Breusch-Godfrey test.}
+\item{order}{the maximum order of serial autocorrelation to test when executing the Breusch-Godfrey test}
 
-\item{object.out}{if \code{TRUE}, and \code{dynardl.auto.correlated} is assigned to an object, the AIC, BIC, and results will be stored for the user's convenience.}
+\item{object.out}{if \code{TRUE}, and \code{dynardl.auto.correlated} is assigned to an object, the AIC, BIC, and results will be stored for the user's convenience}
 }
 \value{
-The results of autocorrelation tests.
+The results of autocorrelation tests
 }
 \description{
-Run a variety of autocorrelation tests on the residuals from a \code{dynardl} model.
+Run a variety of autocorrelation tests on the residuals from a \code{\link{dynardl}} model
 }
 \details{
-This is a simple and convenient way to test whether the residuals from the \code{dynardl} model are white noise. As an aside, this is also why \code{dynardl} has a \code{simulate = FALSE} argument: users can ensure the model has white noise residuals before estimating a potentially time-intensive simulation. The output also reminds the user of the null hypotheses for the autocorrelation tests.
+This is a simple and convenient way to test whether the residuals from the \code{dynardl} model are white noise. As an aside, this is also why \code{dynardl} has a \code{simulate = FALSE} argument: users can ensure the model has white noise residuals before estimating a potentially time-intensive simulation. The output also reminds the user of the null hypotheses for the autocorrelation tests
 }
 \examples{
 # Using the ineq data from dynamac

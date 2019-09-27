@@ -43,7 +43,7 @@ test_that("Correct number of bounds for custom significance levels", {
   dyn.out.6 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
     lags = list("concern" = c(1, 2, 3), "incshare10" = 1, "urate" = 1), ec = TRUE,
     shockvar = "urate", simulate = TRUE, burnin = 20, range = 30, sig = 80)
-  expect_equal(ncol(dyn.out.6$simulation), 11)
+  expect_equal(ncol(dyn.out.6$simulation), 20)
 })
 
 

@@ -2,7 +2,7 @@
 % Please edit documentation in R/dynamac.R
 \name{ldshift}
 \alias{ldshift}
-\title{Take the lagged first difference of a series.}
+\title{Take the lagged first difference of a series}
 \usage{
 ldshift(x, l)
 }
@@ -15,10 +15,10 @@ ldshift(x, l)
 the lagged differenced series
 }
 \description{
-Take the lagged first difference of a series.
+Take the lagged first difference of a series
 }
 \details{
-\code{ldshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even.
+\code{ldshift} assumes that the series are ordered, that there is no missing data, and that the time intervals are even
 }
 \examples{
 x.var <- runif(50)

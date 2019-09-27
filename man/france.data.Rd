@@ -9,7 +9,7 @@
   \item{country}{Country}
   \item{year}{Year}
   \item{lnGDP_cons2010USD}{ln(GDP), constant 2010 US dollars}
-  \item{lnenergy}{ln(energy consumption), mill. tons oil equiv.}
+  \item{lnenergy}{ln(energy consumption), millions tons oil equivalent}
 }}
 \usage{
 data(france.data)

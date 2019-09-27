@@ -17,7 +17,7 @@
   \item{congapp}{Approval of Congress}
 }}
 \source{
-\url{https://sites.lsa.umich.edu/admart/replication/}
+\url{http://dx.doi.org/10.2307/2669280}
 }
 \usage{
 data(supreme.sup)
