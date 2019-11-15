@@ -1,0 +1,10 @@
+v 1.0.5
+d Andrew Q. Philips and Soren Jordan
+d
+p dynamac DYNAMAC - Suite of programs designed to assist users in modeling and visualizing the effects of autoregressive distributed lag models, as well as testing for cointegration
+
+* l word-to-show path-or-url [description]
+* t: Directories within site:
+* t path [description]
+* Packages:
+* p pkgname [description]

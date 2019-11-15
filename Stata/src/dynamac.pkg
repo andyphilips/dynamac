@@ -1,0 +1,19 @@
+v 1.0.5
+
+d Andrew Q. Philips and Soren Jordan
+d
+d Author: Andrew Q. Philips, University of Colorado Boulder
+d Author: Soren Jordan, Auburn University
+d Support: andrew.philips@colorado.edu
+d
+d
+d Requires: Stata version 8 or newer
+d
+d Distribution-Date: 11-15-2019
+d
+
+f dynardl.ado
+f dynardl.sthlp
+f pssbounds.ado
+f pssbounds.sthlp
+
