@@ -22,9 +22,21 @@ library(dynamac)
 You should now be able to use the package.
 
 ## Installation (Stata)
-To install `dynamac` in Stata, type "net sj 18-4 st0545" into Stata, or "findit dynamac".
+To install `dynamac` in Stata type one of the following into the console:
+```
+net sj 18-4 st0545
+```
+```
+findit dynamac
+```
+```
+cap ado uninstall dynamac
+cap ado uninstall dynardl
+cap ado uninstall pssbounds
+net install dynamac, from(https://github.com/andyphilips/dynamac/raw/gh-pages/Stata/src/)
+```
 
-Alternatively, you can download this [zip file](https://andyphilips.github.io/dynamac/Stata/dynamac.zip) and either call directly to the .ado files or place them in your "ado/plus/" folder.
+Alternatively, you download the [raw files](https://github.com/andyphilips/dynamac/raw/gh-pages/Stata/src/) and either call directly to the .ado files or place them in your "ado/plus/" folder.
 
 ## I've found a bug!
 Great! Please post it on the [issues page](https://github.com/andyphilips/dynamac/issues), or email the authors.
