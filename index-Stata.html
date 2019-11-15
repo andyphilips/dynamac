@@ -73,7 +73,20 @@
         <div class="row">
           <div class="col-lg-8 mx-auto">
             <h2>Download</h2>
-            <p class="lead">The simplest way to load <strong>dynamac</strong> into Stata is to type "net sj 18-4 st0545" into Stata's input console, or "findit dynamac". Alternatively, you can download <a href = "Stata/dynamac.zip">this zip file</a>, unzip it, and either call directly to the .ado files or place them in your "ado/plus/" folder.</p>
+            <p class="lead">There are a few different ways to load <strong>dynamac</strong> into Stata using the input console:</p>
+              <pre><code>
+net sj 18-4 st0545
+              </code></pre>
+              <pre><code>
+findit dynamac
+              </code></pre>
+              <pre><code>
+cap ado uninstall dynamac
+cap ado uninstall dynardl
+cap ado uninstall pssbounds
+net install dynamac, from(https://github.com/andyphilips/dynamac/raw/gh-pages/Stata/src/)
+              </code></pre>
+              <p class="lead">Alternatively, you can find the raw files <a href = "https://github.com/andyphilips/dynamac/raw/gh-pages/Stata/src/">here</a> to either call directly to the .ado files, or place in your "ado/plus/" folder.</p> 
           </div>
         </div>
       </div>
