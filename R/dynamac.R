@@ -281,6 +281,8 @@ ldshift <- function(x, l){
 #' @param ec estimate model in error-correction form, (i.e., \code{y} appears
 #' in first-differences). By default, \code{ec} is set to \code{FALSE},
 #' meaning \code{y} will appear in levels. 
+#' @param ec_enforce_lagged_dv add lagged dependent variable to model formula for models specified in error-correction form (i.e., 
+#' models for which \code{ec = TRUE}). The default is \code{TRUE}.
 #' @param trend include a linear time trend. The default is \code{FALSE}
 #' @param constant include a constant. The default is \code{TRUE}
 #' @param modelout print the regression estimates in the console
@@ -379,6 +381,7 @@ dynardl <- function(formula,
 								lagdiffs = list(),
 								levels = list(),
 								ec = FALSE,
+								ec_enforce_lagged_dv = TRUE,
 								trend = FALSE,
 								constant = TRUE,
 								modelout = FALSE,
@@ -625,7 +628,7 @@ dynardl <- function(formula,
 	}
 	###############
 	# Create data #
-	###############		
+	###############	
 	# For X/Y: initialize list of DVs/IVs
 	dv <- dvnamelist <- NULL
 	ldvs <- lnumdvs <- ldvnamelist <- ldvset <- NULL # Initialize LDVs and number of lags
@@ -655,7 +658,7 @@ dynardl <- function(formula,
 	}
 	# Lags
 	if (length(lags)) {
-		if(!(as.character(formula[[2]]) %in% names(lags))) { # If LDV not in lag
+		if(!(as.character(formula[[2]]) %in% names(lags)) & ec_enforce_lagged_dv == TRUE) { # If LDV not in lag
 			lnumdvs <- 1 # we'll default to one lag
 			warning("Lagged dependent variable added to model formula.")
 			ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
@@ -724,7 +727,8 @@ dynardl <- function(formula,
 		}
 	} 	
 	else { # Even if no lag specified, LDV required
-		lnumdvs <- 1		# Default to one lag
+	  stopifnot(ec_enforce_lagged_dv==T)
+	  lnumdvs <- 1		# Default to one lag
 		warning("Lagged dependent variable added to model formula.")
 		ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
 		v.name <- paste("l", 1, as.character(formula[[2]]), sep = ".")
@@ -977,7 +981,7 @@ dynardl <- function(formula,
 			names(pssbounds) <- c("obs", "k", "tstat", "fstat", "case")
 		}
 	}
-		
+	
 	###############
 	# Simulations #
 	###############		
@@ -1030,6 +1034,7 @@ dynardl <- function(formula,
 			PV <- PV + rnorm(sims, 0, sqrt(Sigma2))
 		}
 		
+    # mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
 		
 		# Quantities depend on user values
 		if(sig %in% c(75, 90, 95)) {
@@ -1063,23 +1068,27 @@ dynardl <- function(formula,
 				d_PV_pctile[1,] <- rep(NA, 8) # the first set of differences will be empty (no period to difference)
 			}
 		}
-
+    #browser()
+    
 		if(fullsims == TRUE) {
-			if(ec == TRUE) { # Store them as predicted levels of Y
+			if(ec == TRUE & ec_enforce_lagged_dv == T) { # Store them as predicted levels of Y
 				if(constant == FALSE) { # Set this because it changes where LDV is
 					PV_all_sims[,1] <- mean(PV) + set[1]
 				}
 				else {
 					PV_all_sims[,1] <- mean(PV) + set[2] 
 				}
-			} 
-			else {
+			}
+		  if (ec == TRUE & ec_enforce_lagged_dv == F) {
+		    PV_all_sims[,1] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+		    }
+		  if(ec == FALSE) {
 				PV_all_sims[,1] <- PV
 			}
 		}
 				
 		# If ECM, predicted change is added on to sample mean of Y: first/second element of forcesetlist (first is constant)
-		if(ec == TRUE) {
+		if(ec == TRUE & ec_enforce_lagged_dv == T) {
 			if(constant == FALSE) { # Set this because it changes where LDV is
 				if(qoi == "mean") { # If we're summarizing with the mean
 					meanpv[1] <- mean(PV) + set[1] # For levels, we add the prediction onto the first mean value
@@ -1100,8 +1109,20 @@ dynardl <- function(formula,
 					meandpv[1] <- median(PV)				
 				}
 			}
-		} 
-		else { 	# If just LDV model, it's just the new predicted level
+		}
+		
+		if(ec == TRUE & ec_enforce_lagged_dv == F) {
+		  if(qoi ==  "mean") {
+		    meanpv[1] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+		    meandpv[1] <- mean(PV)
+		  }
+		  else {
+		    meanpv[1] <- median(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+		    meandpv[1] <- median(PV)
+		  }
+		}
+		
+		if(ec == FALSE) {	# If just LDV model, it's just the new predicted level
 			if(qoi == "mean") { # If we're summarizing with the mean
 				meanpv[1] <- mean(PV)
 				meandpv[1] <- NA # The first one will be empty: nothing to difference				
@@ -1110,7 +1131,8 @@ dynardl <- function(formula,
 				meanpv[1] <- median(PV)
 				meandpv[1] <- NA # The first one will be empty: nothing to difference						
 			}
-		}			
+		}	
+		
 		###########################
 		# Values at t = 2 - range #
 		###########################		
@@ -1119,6 +1141,7 @@ dynardl <- function(formula,
 		print("dynardl estimating ...") 
 		flush.console()
 		pb <- txtProgressBar(min = 0, max = brange, style = 3)
+		#browser()
 		
 		for(p in 2:brange) {
 			Sys.sleep(0.1)
@@ -1127,16 +1150,16 @@ dynardl <- function(formula,
 			if(constant == TRUE) {
 				row <- row + 1	# Increment past constant
 			}
-			
+		  
 			##### LDVs (MUST HAVE) (these don't depend on shocktime)
-			for(lag in 1:length(lnumdvs)) {		# For each lag in the LDVs 
+			for(lag in seq(along=lnumdvs)) {#1:length(lnumdvs)) {		# For each lag in the LDVs 
 				w <- p - lnumdvs[lag]			# w is the time period minus the appropriate lag of the LDV
 				if(w > 0) {	# If LDV exists, meaning we've gone forward enough in time
 					set[row] <- meanpv[w] 	# For that lag of LDV, give it the corresponding PV
 				}	# Else: keep the set where it is, meaning don't replace the lag
 				row <- row + 1					# Move down the setlist (i.e. to the next lag of LDV)
 			}
-			
+			#browser()
 			##### LDDVs (OPTIONAL) (these don't depend on shocktime)			
 			if(length(ldnumdvs)) {			
 				for(lag in 1:length(ldnumdvs)) {	# For each lag in the LDDVs					
@@ -1224,6 +1247,9 @@ dynardl <- function(formula,
 			# Still in the p:brange loop. Just FYI
 			# Create next predicted values. ``set'' has now been replaced by all of the new values
 			PV <- PB%*%set
+			
+			#if (is.null(lnumdvs)) PV <- PV + meanpv[p-1]
+			
 			# Same as before. 
 			if(expectedval == TRUE) {
 				for(i in 1:sims) { # For each PB, of which there are sims
@@ -1237,7 +1263,7 @@ dynardl <- function(formula,
 			# Quantities depend on user values
 			if(sig %in% c(75, 90, 95)) {
 				# Upper/lower bounds depend on specifications
-				if(ec == TRUE) { # If ECM, add percentiles to old predicted values
+				if(ec == TRUE & ec_enforce_lagged_dv == T) { # If ECM, add percentiles to old predicted values
 					if(constant == FALSE) { # Set this because it changes where LDV is
 						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + set[1]
 					}
@@ -1247,7 +1273,14 @@ dynardl <- function(formula,
 					# If it's an ECM, the PVs are the differences as the model is in delta_y
 					d_PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975))				
 				}
-				else {
+			  
+			  if(ec == TRUE & ec_enforce_lagged_dv == F) { # add lagged value of Y
+			    PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + meanpv[p-1]
+			    # If it's an ECM, the PVs are the differences as the model is in delta_y
+			    d_PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975))				
+			  }
+			  
+			  if(ec == FALSE) {
 					PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975))	
 					# differenced values don't depend on ECM: it's built in to the PVs
 					d_PV <- PV - PV_lag
@@ -1255,7 +1288,7 @@ dynardl <- function(formula,
 				}
 			} 
 			else { # If the user needs their own significance value too
-				if(ec == TRUE) { # If ECM, add percentiles to old predicted values
+				if(ec == TRUE & ec_enforce_lagged_dv == T) { # If ECM, add percentiles to old predicted values
 					if(constant == FALSE) { # Set this because it changes where LDV is
 						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + set[1]
 					} 
@@ -1264,8 +1297,14 @@ dynardl <- function(formula,
 					}
 					# If it's an ECM, the PVs are the differences as the model is in delta_y
 					d_PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu))
-				} 
-				else {
+				}
+			  
+			  if(ec == TRUE & ec_enforce_lagged_dv == F) { 
+			    PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + meanpv[p-1]
+			    d_PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu))
+			  }
+			  
+				if(ec == FALSE) {
 					PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) 
 					# If it's an LDV, the PVs need to be obtained from the differences
 					d_PV <- PV - PV_lag
@@ -1274,38 +1313,47 @@ dynardl <- function(formula,
 			}
 			
 			if(fullsims == TRUE) {
-				if(ec == TRUE) {
+				if(ec == TRUE & ec_enforce_lagged_dv == T) {
 					if(constant == FALSE) { # Set this because it changes where LDV is
 						PV_all_sims[,p] <- PV + set[1]
 					}
 					else {
 						PV_all_sims[,p] <- PV + set[2] 
 					}
-				} 
-				else {
+				}
+			  if(ec == TRUE & ec_enforce_lagged_dv == F) {
+			    PV_all_sims[,p] <- PV + meanpv[p-1]
+			    
+			  }
+			  
+				if(ec == FALSE) {
 					PV_all_sims[,p] <- PV
 				}
 			}
+			
+			addvalue = 0
+			if (ec == T & ec_enforce_lagged_dv == F) addvalue = meanpv[p-1]
+			#browser()
 			
 			# Lastly, get the predicted values
 			if(ec == TRUE) {
 				if(constant == FALSE) {
 					if(qoi == "mean") { # If we're summarizing with the mean
-						meanpv[p] <- mean(PV) + set[1]
+						meanpv[p] <- mean(PV) + set[1] + addvalue
 						meandpv[p] <- mean(PV) # For differences, the prediction is the difference: the model is in delta_y
 					}
 					else {
-						meanpv[p] <- median(PV) + set[1]
+						meanpv[p] <- median(PV) + set[1] + addvalue
 						meandpv[p] <- median(PV) # For differences, the prediction is the difference: the model is in delta_y
 					}
 				} 
 				else {
 					if(qoi == "mean") { # If we're summarizing with the mean
-						meanpv[p] <- mean(PV) + set[2]
+						meanpv[p] <- mean(PV) + set[2] + addvalue
 						meandpv[p] <- mean(PV) # For differences, the prediction is the difference: the model is in delta_y
 					}
 					else {
-						meanpv[p] <- median(PV) + set[2]
+						meanpv[p] <- median(PV) + set[2] + addvalue
 						meandpv[p] <- median(PV)	 # For differences, the prediction is the difference: the model is in delta_y
 					}
 				}
