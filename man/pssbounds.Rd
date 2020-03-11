@@ -4,8 +4,16 @@
 \alias{pssbounds}
 \title{Perform Pesaran, Shin and Smith (2001) cointegration test}
 \usage{
-pssbounds(data = list(), obs = NULL, fstat = NULL, tstat = NULL,
-  case = NULL, k = NULL, digits = 3, object.out = FALSE)
+pssbounds(
+  data = list(),
+  obs = NULL,
+  fstat = NULL,
+  tstat = NULL,
+  case = NULL,
+  k = NULL,
+  digits = 3,
+  object.out = FALSE
+)
 }
 \arguments{
 \item{data}{an optional \code{\link{dynardl}} model. This option is highly recommended. Users are welcome to supply their own case, t-statistic, F-statistic, and observations, but it is easier to have the model determine these quantities}

@@ -4,9 +4,18 @@
 \alias{dynardl.simulation.plot}
 \title{Create a plot of a simulated response in a \code{\link{dynardl}} model}
 \usage{
-dynardl.simulation.plot(x, type = "area", response = "levels",
-  bw = FALSE, last.period = NULL, tol = (abs(x$model$ymean) * 0.01),
-  start.period = 1, ylab = "", xlab = "", ...)
+dynardl.simulation.plot(
+  x,
+  type = "area",
+  response = "levels",
+  bw = FALSE,
+  last.period = NULL,
+  tol = (abs(x$model$ymean) * 0.01),
+  start.period = 1,
+  ylab = "",
+  xlab = "",
+  ...
+)
 }
 \arguments{
 \item{x}{a \code{dynardl} model with a simulation to be plotted}

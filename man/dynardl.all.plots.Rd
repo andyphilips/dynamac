@@ -4,8 +4,15 @@
 \alias{dynardl.all.plots}
 \title{Combine all of the potential plots of a simulated response in a \code{\link{dynardl}} model}
 \usage{
-dynardl.all.plots(x, type = "area", bw = FALSE, last.period = NULL,
-  start.period = 1, tol = (abs(x$model$ymean) * 0.01), ...)
+dynardl.all.plots(
+  x,
+  type = "area",
+  bw = FALSE,
+  last.period = NULL,
+  start.period = 1,
+  tol = (abs(x$model$ymean) * 0.01),
+  ...
+)
 }
 \arguments{
 \item{x}{a \code{dynardl} model with a simulation to be plotted. Since all plots includes absolute cumulative differences, 

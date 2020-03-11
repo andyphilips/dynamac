@@ -4,8 +4,13 @@
 \alias{dynardl.auto.correlated}
 \title{Run a variety of autocorrelation tests on the residuals from a \code{\link{dynardl}} model}
 \usage{
-dynardl.auto.correlated(x, bg.type = "Chisq", digits = 3,
-  order = NULL, object.out = FALSE)
+dynardl.auto.correlated(
+  x,
+  bg.type = "Chisq",
+  digits = 3,
+  order = NULL,
+  object.out = FALSE
+)
 }
 \arguments{
 \item{x}{a \code{dynardl} model}

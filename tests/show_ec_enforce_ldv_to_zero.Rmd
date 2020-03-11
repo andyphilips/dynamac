@@ -1,0 +1,148 @@
+---
+title: "Extending `dynardl` to estimate model in first-differences w/o lagged DV"
+output:
+  html_document:
+    df_print: paged
+---
+
+In Philips, A. Q. (2018, American Journal of Political Science, 62(1), 230-244), present a flow chart of which model to estimate, as a function of the time series properties of the dependent and independent variables (see Figure 1, p. 233).
+
+The existing `dynardl` package can estimate two out of the three models:
+
+(1) Estimate ARDL(p,q) in levels (case j) --> specify `dynardl` with `EC = FALSE`
+(2) Conclude cointegration and estimate ARDL(p,q) in error-correction form (case o) --> specify `dynardl` with `EC = TRUE`
+
+The last case is not covered yet, namely:
+
+(3) First-difference dependent variable and run ARDL(p,q). That would require to estimate `dynardl` with `EC = TRUE`, but to NOT automatically add the lagged dependent variable to the model (cf. formula 11 in Philips 2018, p. 234).
+
+Below, I illustrate an extension to `dynardl` that covers that case.
+
+Let us first simulate some data for different values of the coefficient of the lagged dependent variable, `phi = -.8` and `phi = 0`.
+
+```{r message=FALSE, warning=FALSE}
+# Load prototype of package
+library(devtools)
+load_all('../R')
+```
+
+```{r}
+# Simulate data for different values of phi
+
+set.seed(1)
+my_data <- lapply(c(-.8, 0), function(phi) {
+  x.error <- rnorm(500, 0, 2)
+  x.full <- x.error
+  y.error <- rnorm(500, 0, 2)
+  y.full <- y.error
+  y.diff.full <- rep(NA, length(y.full))
+  #phi <- 0 #-0.8 # coef on ldv
+  beta.lx <- 1 # coef on l.x
+  beta.diff.x <- -2 # coef on x
+
+  
+  for(i in 2:length(x.full)) {
+    x.full[i] <- x.full[i - 1] + x.error[i]
+    y.diff.full[i] <- phi*y.full[i - 1] + beta.diff.x*(x.full[i] - x.full[i - 1]) + beta.lx*x.full[i - 1] + y.error[i] # rnorm(1, 0, 1) + const*rnorm(1, 1, 0.25) +
+    y.full[i] <- y.full[i - 1] + y.diff.full[i]
+  }
+  
+  # Trim the burn in
+  x <- x.full[101:500]
+  y.diff <- y.diff.full[101:500]
+  y <- y.full[101:500]
+
+  return(data.frame(x=x,y=y))
+})
+
+```
+
+```{r}
+# Let us also introduce a function that easily allows us to plot the simulation result of dynardl
+
+plot_dynardl <- function(model) {
+  par(mfrow = c(1, 4))
+  plot(y, type = "l")
+  plot(dshift(y), type = "l")
+  dynardl.simulation.plot(model, response = "diffs")
+  dynardl.simulation.plot(model, response = "levels")
+}
+
+```
+
+# Estimate case (2): ARDL(p,q) in error correction form
+
+```{r}
+############################################
+# Lagged DV present: use data w/ phi = -.8 #
+############################################
+
+# the default: adds lagged dependent variable if specified with ec = TRUE
+set.seed(1)
+x=my_data[[1]]$x
+y=my_data[[1]]$y
+
+model.ec <- dynardl(y ~ x, lags = list("x" = c(1)), diffs = c("x"), 
+                    simulate = TRUE, fullsims = TRUE, 
+                    shockvar = "x",
+                    sims = 10000, range = 20,
+                    ec = TRUE)
+summary(model.ec)
+plot_dynardl(model.ec)
+```
+
+Observe the warning, namely that the lagged dependent variable is automatically added to the model.
+This is desireable if one would like to estimate a model for this case (the error correction form).
+
+Let us now turn to a case in which we do not want to estimate that coefficient for the lagged DV.
+
+# Estimate case (3): ARDL(p,q) in first-differences
+
+## Restricting the coefficient of the lagged DV to zero is not possible
+
+```{r}
+##############################################
+# Lagged DV not present: use data w/ phi = 0 #
+##############################################
+
+# re-estimate w/ EC = T
+set.seed(1)
+x=my_data[[2]]$x
+y=my_data[[2]]$y
+
+model.ec2 <- dynardl(y ~ x, lags = list("x" = c(1)), diffs = c("x"), 
+                    simulate = TRUE, fullsims = TRUE, 
+                    shockvar = "x",
+                    sims = 10000, range = 20,
+                    ec = TRUE)
+summary(model.ec2)
+plot_dynardl(model.ec2)
+```
+
+Observe again that `dynardl` automatically adds the lagged dependent variable to the model.
+While the parameters are recovered reasonably well (coefficient on l.1.y is small and not significant),
+this is undesirable if one wishes to restrict the coefficient on the lagged DV to zero.
+
+## Introducing a new option: ec_enforce_lagged_dv to restrict the coefficient on the lagged DV to zero
+
+```{r}
+# re-estimate w/ EC = 2, but DO NOT estimate coefficient for l.1.y
+# this model mimicks formula (11) in Philips 2018, American J of Political Science, p. 234.
+
+set.seed(1)
+x=my_data[[2]]$x
+y=my_data[[2]]$y
+
+model.ec.nlag <- dynardl(y ~ x, lags = list("x" = c(1)), diffs = c("x"), 
+                    simulate = T, fullsims = TRUE, 
+                    shockvar = "x",
+                    sims = 10000, range = 20,
+                    ec = TRUE, ec_enforce_lagged_dv = F)
+summary(model.ec.nlag)
+plot_dynardl(model.ec.nlag)
+```
+
+Observe that:
+
+- parameters are recovered well, and
+- plots look reasonably well

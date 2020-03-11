@@ -17,13 +17,6 @@ spike.simulation.plot(x, response = "levels", bw = FALSE)
 or in changes from the mean of the dependent variable (\code{mean.changes}). The default is \code{levels}}
 
 \item{bw}{should the colors be in black and white (for publication)? The default is \code{FALSE}}
-
-\item{x}{a dynardl model with a simulation to be plotted}
-
-\item{response}{whether the plot of the response should be shown in levels of the dependent variable (\code{levels}) 
-or in changes from the mean of the dependent variable (\code{mean.changes}). The default is \code{levels}}
-
-\item{bw}{should the colors be in black and white (for publication)? The default is \code{FALSE}}
 }
 \value{
 an area plot

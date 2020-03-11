@@ -4,13 +4,31 @@
 \alias{dynardl}
 \title{Estimate and simulate ARDL model}
 \usage{
-dynardl(formula, data = list(), lags = list(), diffs = list(),
-  lagdiffs = list(), levels = list(), ec = FALSE, trend = FALSE,
-  constant = TRUE, modelout = FALSE, simulate = FALSE,
-  shockvar = list(), shockval = sd(data[[shockvar]], na.rm = T),
-  time = 10, qoi = "mean", forceset = NULL, range = 20,
-  burnin = 20, sims = 1000, sig = 95, expectedval = FALSE,
-  fullsims = FALSE)
+dynardl(
+  formula,
+  data = list(),
+  lags = list(),
+  diffs = list(),
+  lagdiffs = list(),
+  levels = list(),
+  ec = FALSE,
+  ec_enforce_lagged_dv = TRUE,
+  trend = FALSE,
+  constant = TRUE,
+  modelout = FALSE,
+  simulate = FALSE,
+  shockvar = list(),
+  shockval = sd(data[[shockvar]], na.rm = T),
+  time = 10,
+  qoi = "mean",
+  forceset = NULL,
+  range = 20,
+  burnin = 20,
+  sims = 1000,
+  sig = 95,
+  expectedval = FALSE,
+  fullsims = FALSE
+)
 }
 \arguments{
 \item{formula}{a symbolic description of the model to be estimated. ARDL
@@ -31,6 +49,9 @@ estimated}
 \item{ec}{estimate model in error-correction form, (i.e., \code{y} appears
 in first-differences). By default, \code{ec} is set to \code{FALSE},
 meaning \code{y} will appear in levels.}
+
+\item{ec_enforce_lagged_dv}{add lagged dependent variable to model formula for models specified in error-correction form (i.e., 
+models for which \code{ec = TRUE}). The default is \code{TRUE}.}
 
 \item{trend}{include a linear time trend. The default is \code{FALSE}}
 
