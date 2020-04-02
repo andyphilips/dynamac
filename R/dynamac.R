@@ -1,21 +1,22 @@
-# version 0.1.9
-# 9/27/2019
+# version 0.1.10.9001
+# 4/2/2020
 # Authors: Soren Jordan, Andrew Q. Philips
 
 # Corrections since previous version:
-#	Deprecated separate plot functions
-#	More options to plotting
-#	New grand plotting function (combining all)
-#	Bug squishing
-#	Ability to start the simulation plots at a period other than 1
-#	pssbounds is informative if k = 0
+#	Change to pssbounds to allow, but carefully, different cases of models (through restriction = TRUE/FALSE)
+#   Override duplicate input in pssbounds (user + dynardl)
+#   Move pssbounds estimation (fstat) to pssbounds function
+#	Custom ylim to simulation plots
+#	Change default in dynardl to c() for levels and diffs (for clarity)
+#	A lot of new unit tests for functions, especially expected warnings
 
 # TO DO: 
 #	Do user-specified significances need to be in the plots?
+#	Unit testing of plots through vdiffr
 #   Future release: permanent shifts as opposed to shocks? Forecasting?
 #   Add more autocorrelation tests
-#	Unit test of critical values by checking output
-
+#	Automatic lag selection?
+#	ts data?
 
 ## Deprecated functions file
 #' @title Deprecated functions in package \pkg{dynamac}
@@ -76,10 +77,7 @@ NULL
 # Datasets exported: 
 #' Data on US Supreme Court Approval
 #'
-#' A dataset from: Durr, Robert H., Andrew D. Martin, and Christina
-#' Wolbrecht. 2000. "Ideological divergence and public support for
-#' the Supreme Court." American Journal of Policial Science 44(4):
-#' 768-776.
+#' A dataset from: Durr, Robert H., Andrew D. Martin, and Christina Wolbrecht. 2000. "Ideological divergence and public support for the Supreme Court." American Journal of Policial Science 44(4): 768-776.
 #'
 #' @format A data frame with 42 rows and 9 variables:
 #' \describe{
@@ -126,6 +124,7 @@ NULL
 #	ec = [FALSE] 						should model be error correcting? (i.e. differenced y or not)
 #	trend = [FALSE]						include a linear trend 
 #	constant = [TRUE]					include a constant
+#	noLDV = [FALSE]						do not force a LDV in EC models. highly unrecommended
 #	modelout = [FALSE]					print model summary	
 #	simulate = [FALSE]					simulate model, or just estimate?
 #	shockvar = [list()]					variable to be shocked, like "x"
@@ -268,70 +267,34 @@ ldshift <- function(x, l){
 ##########################################
 #' Estimate and simulate ARDL model
 #' @description
-#' Estimate autoregressive distributed lag model and simulate interesting values (if desired)
+#' Estimate autoregressive distributed lag models and simulate interesting values (if desired)
 #' @param formula a symbolic description of the model to be estimated. ARDL
 #' models are estimated using linear regression
-#' @param data an optional data frame or list containing the the variables in
-#' the model
-#' @param lags a list of variables and their corresponding lags to be
-#' estimated
+#' @param data an optional data frame or list containing the the variables in the model
+#' @param lags a list of variables and their corresponding lags to be estimated
 #' @param diffs a vector of variables to be differenced. Only first differences are supported
 #' @param lagdiffs a list of variables to be included in lagged differences
 #' @param levels a vector of variables to be included in levels
-#' @param ec estimate model in error-correction form, (i.e., \code{y} appears
-#' in first-differences). By default, \code{ec} is set to \code{FALSE},
-#' meaning \code{y} will appear in levels. 
+#' @param ec estimate model in error-correction form, (i.e., \code{y} appears in first-differences). By default, \code{ec} is set to \code{FALSE}, meaning \code{y} will appear in levels.
 #' @param trend include a linear time trend. The default is \code{FALSE}
 #' @param constant include a constant. The default is \code{TRUE}
+#' @param noLDV do not add a lagged dependent variable (LDV) to ARDL models when omitted in formula (special thanks to Hannes Datta). This is not recommended
 #' @param modelout print the regression estimates in the console
-#' @param simulate simulate the reponse. Otherwise, just the regression model
-#' will be estimated. If \code{simulate = FALSE}, options \code{shockvar}, \code{shockval}, 
-#' \code{time}, \code{qoi}, \code{forceset}, \code{range}, \code{burnin}, \code{sims}, 
-#' \code{sig}, \code{expectedval}, and \code{fullsims} are ignored. The default is \code{FALSE} so
-#' that users can build models without needing to simulate the results each time. When 
-#' \code{simulate = TRUE}, users are highly encouraged to set a seed before simulation, as with
-#' any stochastic exercise
+#' @param simulate simulate the reponse. Otherwise, just the regression model will be estimated. If \code{simulate = FALSE}, options \code{shockvar}, \code{shockval},  \code{time}, \code{qoi}, \code{forceset}, \code{range}, \code{burnin}, \code{sims}, \code{sig}, \code{expectedval}, and \code{fullsims} are ignored. The default is \code{FALSE} so that users can build models without needing to simulate the results each time. When \code{simulate = TRUE}, users are highly encouraged to set a seed before simulation, as with any stochastic exercise
 #' @param shockvar the variable to be shocked in the counterfactual simulation. There is no default
-#' @param shockval the amount by which the \code{shockvar} should be shocked.
-#' The default is one standard deviation of the shocked variable
-#' @param time the time period in the simulation for the variable to be
-#' shocked
-#' @param qoi summarize the response of the dependent variable with the mean or the median.
-#' Although the default is \code{mean}, if there is underlying skew in the 
-#' distribution, it might be better summarized by \code{median}
-#' @param forceset by default, in the simulations, variables in levels will be
-#' set to their means; variables in differences will be set to 0.
-#' Alternatively, users can set any variable in the model to a different value
-#' using a list in \code{forceset}. These values can be any user-defined value, 
-#' including means, medians, percentiles, or other values of interest 
+#' @param shockval the amount by which the \code{shockvar} should be shocked. The default is one standard deviation of the shocked variable
+#' @param time the time period in the simulation for the variable to be shocked
+#' @param qoi summarize the response of the dependent variable with the mean or the median. Although the default is \code{mean}, if there is underlying skew in the distribution, it might be better summarized by \code{median}
+#' @param forceset by default, in the simulations, variables in levels will be set to their means; variables in differences will be set to 0. Alternatively, users can set any variable in the model to a different value using a list in \code{forceset}. These values can be any user-defined value, including means, medians, percentiles, or other values of interest 
 #' @param range the range of the simulation to be conducted
-#' @param burnin the number of time periods to disregard before recording the
-#' values. These do not include the \code{range}; in other words, they take
-#' place before the \code{range} specified above. Users can increase the
-#' number of \code{burnin} periods, but probably should not decrease them. The
-#' default is 20
-#' @param sims the number of simulations to use in creating the quantities of
-#' interest (the response of the dependent variable). The default is 1000
-#' @param sig the significance level (1 - \code{p}) that the user wants for
-#' the simulations. The default level is 95\% significance (\code{sig = 95})
-#' @param expectedval if this is \code{TRUE}, the simulation will record the
-#' expected values of across the \code{sims} by averaging errors. The default is
-#' \code{FALSE}, since expected values do not account for
-#' stochastic error present in the model itself
-#' @param fullsims whether all of the raw simulations should be stored in the
-#' model object. These are required for some of the more advanced plotting functions, 
-#' especially those that use the simulations to derive confidence intervals about
-#' the size of the period-over-period differences. The default is \code{FALSE}
-#' @return \code{dynardl} should always return an estimated model. It may or
-#' may not be simulated, according to the user. But the relevant regression
-#' output, model residuals (which can be tested for autocorrelation), and
-#' simulated response (if created) are stored in a list if the model is
-#' assigned to an object
+#' @param burnin the number of time periods to disregard before recording the values. These do not include the \code{range}; in other words, they take place before the \code{range} specified above. Users can increase the number of \code{burnin} periods, but probably should not decrease them. The default is 20
+#' @param sims the number of simulations to use in creating the quantities of interest (the response of the dependent variable). The default is 1000
+#' @param sig the significance level (1 - \code{p}) that the user wants for the simulations. The default level is 95\% significance (\code{sig = 95})
+#' @param expectedval if this is \code{TRUE}, the simulation will record the expected values of across the \code{sims} by averaging errors. The default is \code{FALSE}, since expected values do not account for stochastic error present in the model itself
+#' @param fullsims whether all of the raw simulations should be stored in the model object. These are required for some of the more advanced plotting functions, especially those that use the simulations to derive confidence intervals about the size of the period-over-period differences. The default is \code{FALSE}
+#' @return \code{dynardl} should always return an estimated model. It may or may not be simulated, according to the user. But the relevant regression output, model residuals (which can be tested for autocorrelation), and simulated response (if created) are stored in a list if the model is assigned to an object
 #' @details
-#' Estimate an auto-regressive distributed lag model. Moreover, enable a
-#' graphical interpretation of the results (through \code{\link{dynardl.simulation.plot}})
-#' by simulating the response of 
-#' the dependent variable to shocks in one of the regressors
+#' Estimate an auto-regressive distributed lag model. Moreover, enable a graphical interpretation of the results (through \code{\link{dynardl.simulation.plot}}) by simulating the response of the dependent variable to shocks in one of the regressors, and enable the Pesaran, Shin, and Smith (2001) test for cointegration for error-correction models (through \code{\link{pssbounds}})
 #' @importFrom graphics lines plot points polygon segments
 #' @importFrom stats AIC BIC as.formula coef lm logLik quantile rchisq rnorm sd sigma vcov median
 #' @importFrom utils head flush.console head setTxtProgressBar txtProgressBar
@@ -375,13 +338,14 @@ ldshift <- function(x, l){
 dynardl <- function(formula,
 								data = list(),
 								lags = list(),
-								diffs = list(),
+								diffs = c(),
 								lagdiffs = list(),
-								levels = list(),
+								levels = c(),
 								ec = FALSE,
 								trend = FALSE,
 								constant = TRUE,
 								modelout = FALSE,
+								noLDV = FALSE,
 								simulate = FALSE,
 								shockvar = list(),
 								shockval = sd(data[[shockvar]], na.rm = T),
@@ -457,7 +421,11 @@ dynardl <- function(formula,
 					}
 				}
 				if(first.lag.ldv == FALSE) {
-					stop("'lags' must include first lag of dependent variable (LDV)")	
+					if(noLDV == TRUE) {
+						warning(paste("ARDL model with no LDV specified. Only finite dynamics are possible through lags of X (which might affect simulations). Are you sure you want this?"))
+					} else {
+						stop("'lags' must include first lag of dependent variable (LDV) (or specify noLDV = TRUE)")
+					}
 				}
 			}
 			# Warn if variables aren't in formula
@@ -533,9 +501,9 @@ dynardl <- function(formula,
 				if(!(grepl("\"", deparse(substitute(shockvar))))) {	# And it's not in quotations
 					stop("'shockvar' must be specified in quotation marks.")		# Because it will break when it searches for shockvars later
 				}			
-				else {	# The rest are just warnings
+				else {	# Will make lots of other conditions unhappy later
 					if(length(shockvar) > 1) {
-						warning("You specified more than one shockvar, but since you are not simulating, I am ignoring it. Only specify one shockvar in a dynamic simulation.")
+						stop("You specified more than one shockvar. Only specify one shockvar in a dynamic simulation.")
 					}
 					if(!(shockvar %in% all.vars(formula))) { # If it's not in the formula, that's a problem
 						warning("Your shockvar is not in the model formula, but since you are not simulating, I am ignoring it. Specify modeled variables for dynamic simulations.")
@@ -566,14 +534,14 @@ dynardl <- function(formula,
 					}
 					else {
 						if(!(shockvar %in% all.vars(formula))) { # If it's not in the formula, that's a problem
-							stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found in model formula. Shock variable required for dynamic simulation."), sep = " "))
+							stop(paste(paste("Variable"), paste(shockvar), paste("(the shockvar) not found in model formula. Shock variable required for dynamic simulation."), sep = " "))
 						}
 						else { # If it's not estimated, that's another problem
 							if(!(shockvar %in% diffs)) { #if its not in diffs
 								if(!(shockvar %in% names(lagdiffs))) {
 									if(!(shockvar %in% levels)) {
 										if(!(shockvar %in% names(lags))) {
-											stop(paste(paste("Variable"), paste(shockvar), paste("in the shockvar list not found lags, lagdiffs, levels, or differences. Shock variable required for dynamic simulation."), sep = " "))
+											stop(paste(paste("Variable"), paste(shockvar), paste("(the shockvar) not found lags, lagdiffs, levels, or differences. Shock variable required for dynamic simulation."), sep = " "))
 										}
 									}
 								}
@@ -654,19 +622,26 @@ dynardl <- function(formula,
 		assign(paste(dvnamelist), as.matrix(dv))
 	}
 	# Lags
-	if (length(lags)) {
+	if(length(lags)) {
 		if(!(as.character(formula[[2]]) %in% names(lags))) { # If LDV not in lag
-			lnumdvs <- 1 # we'll default to one lag
-			warning("Lagged dependent variable added to model formula.")
-			ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
-			v.name <- paste("l", 1, as.character(formula[[2]]), sep = ".")
-			ldvnamelist <- c(ldvnamelist, v.name)
-			assign(paste(v.name), lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
-			if(constant == TRUE) { # If there is an intercept, use the mean
-				ldvset <- c(ldvset, mean(as.matrix(data[as.character(formula[[2]])]), na.rm = T))
-			} 
-			else { # If not, set to 0
-				ldvset <- c(ldvset, 0)
+			if(noLDV == TRUE) {
+				warning(paste("ARDL model with no LDV specified. Only finite dynamics are possible through lags of X (which might affect simulations). Are you sure you want this?"))
+				### ADD exception here, maybe to deal with simulation
+				lnumdvs <- 0	
+			}
+			else {
+				lnumdvs <- 1 # we'll default to one lag
+				warning("Lagged dependent variable added to model formula.")
+				ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+				v.name <- paste("l", 1, as.character(formula[[2]]), sep = ".")
+				ldvnamelist <- c(ldvnamelist, v.name)
+				assign(paste(v.name), lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+				if(constant == TRUE) { # If there is an intercept, use the mean
+					ldvset <- c(ldvset, mean(as.matrix(data[as.character(formula[[2]])]), na.rm = T))
+				} 
+				else { # If not, set to 0
+					ldvset <- c(ldvset, 0)
+				}				
 			}
 		} # For all other lags
 		for(i in 1:length(lags)) { # loop thru list
@@ -724,17 +699,23 @@ dynardl <- function(formula,
 		}
 	} 	
 	else { # Even if no lag specified, LDV required
-		lnumdvs <- 1		# Default to one lag
-		warning("Lagged dependent variable added to model formula.")
-		ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
-		v.name <- paste("l", 1, as.character(formula[[2]]), sep = ".")
-		ldvnamelist <- c(ldvnamelist, v.name)
-		assign(paste(v.name), lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
-		if(constant == TRUE) { # If there is an intercept, use the mean
-			ldvset <- c(ldvset, mean(as.matrix(data[as.character(formula[[2]])]), na.rm = T))
-		} 
-		else { # If not, set to 0
-			ldvset <- c(ldvset, 0)
+		if(noLDV == TRUE) {		
+			warning(paste(paste("ARDL model with no LDV specified. Only finite dynamics are possible through lags of X (which might affect simulations). Are you sure you want this?")))
+			lnumdvs <- 0	
+		}
+		else {
+			lnumdvs <- 1		# Default to one lag
+			warning("Lagged dependent variable added to model formula.")
+			ldvs <- cbind(ldvs, lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+			v.name <- paste("l", 1, as.character(formula[[2]]), sep = ".")
+			ldvnamelist <- c(ldvnamelist, v.name)
+			assign(paste(v.name), lshift(as.matrix(data[as.character(formula[[2]])]), l = 1))
+			if(constant == TRUE) { # If there is an intercept, use the mean
+				ldvset <- c(ldvset, mean(as.matrix(data[as.character(formula[[2]])]), na.rm = T))
+			} 
+			else { # If not, set to 0
+				ldvset <- c(ldvset, 0)
+			}
 		}
 	} 
 	# Differences. Will be less complicated because of LDV issue and only first differences supported
@@ -852,7 +833,7 @@ dynardl <- function(formula,
 		trend.message <- "Deterministic linear trend added to model formula."
 	} 
 	if(constant == FALSE) {
-		cosntant.message <- "Constant suppressed from model formula."
+		constant.message <- "Constant suppressed from model formula."
 	}	
 	
 	# Independent variables, their names, and the setlist of values for simulations we created
@@ -896,9 +877,11 @@ dynardl <- function(formula,
 	# Add EC status to res object to help with pssbounds
 	# Add y to help with dynardl.auto.correlated
 	res$y <- dv
+	res$y.name <- as.character(formula[[2]])
 	res$EC <- ec
 	res$simulate <- simulate
 	res$ymean <- mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)	
+	res$ldv <- ifelse(noLDV == TRUE, FALSE, TRUE)
 	
 	if(ec == TRUE) { # Include differenced (which should be 0) if it's EC
 		res$ymean.diff <- mean(dshift(as.matrix(data[[as.character(formula[[2]])]])), na.rm = T)
@@ -924,60 +907,6 @@ dynardl <- function(formula,
 	dfsig <- res$df.residual
 	len <- res$rank
 	
-	#############
-	# pssbounds #
-	#############			
-	case <- tstat <- fstat <- obs <- k <- NULL
-	# Only possible if EC
-	if(ec == TRUE) {
-		# Only possible if a variable (implied error-correcting) is in first lags, Isolate variables in model in first lags
-		R.temp <- rep(NA, length(coef(res)))
-		for(i in 1:length(R.temp)) {
-			# If that variable is a first lag, it's in the restriction set. 0 if not
-			ifelse(grepl("l.1.", names(coef(res))[i]) == TRUE, R.temp[i] <- 1, R.temp[i] <- 0)
-			# Except if it's the LDV, we don't want it
-			# ifelse(names(coef(res))[i] == paste(ldvnamelist), R.temp[i] <- 0, R.temp[i] <- R.temp[i])
-		}
-		k.temp <- sum(R.temp) - 1 # The LDV is automatically added. So if it's the only variable in first lags, this will be zero
-		if(k.temp == 0) {
-			pssbounds <- "pssbounds not executed: no variables in first lags, so no cointegrating relationship implied."
-		} else {
-			if(trend == TRUE) {
-				if(constant == FALSE) {
-					case <- 0
-				}
-				else {
-					case <- 5
-				}
-			}
-			else {
-				if(constant == FALSE) {
-					case <- 1
-				}
-				else {
-					case <- 3
-				}
-			}
-			tstat <- coef(summary(res))[paste(ldvnamelist),3] # t stat on LDV
-			obs <- length(res$residuals) # number of observations in model
-			k <- sum(R.temp) 
-			# This needs to be expanded so that each hypothesis gets its own row
-			R <- matrix(rep(0, length(coef(res))*k), nrow = k)
-			the.row <- 1
-			for(i in 1:length(R.temp)){
-				if(R.temp[i] == 1) { # If that model coefficient is a first lag
-					R[the.row, i] <- 1	# Then that row gets a 1 where the coefficient is
-					the.row <- the.row + 1
-				}			
-			}
-			# Restriction is always that it's equal to 0
-			q <- 0
-			fstat <- (1/k)*t(R%*%B-q)%*%solve(R%*%V%*%t(R))%*%(R%*%B-q)	
-			pssbounds <- data.frame(obs, k.temp, tstat, fstat, case) # k statistic here EXCLUDES the LDV
-			names(pssbounds) <- c("obs", "k", "tstat", "fstat", "case")
-		}
-	}
-		
 	###############
 	# Simulations #
 	###############		
@@ -1029,8 +958,6 @@ dynardl <- function(formula,
 		else {
 			PV <- PV + rnorm(sims, 0, sqrt(Sigma2))
 		}
-		
-		
 		# Quantities depend on user values
 		if(sig %in% c(75, 90, 95)) {
 			# Upper/lower bounds depend on specifications
@@ -1063,14 +990,14 @@ dynardl <- function(formula,
 				d_PV_pctile[1,] <- rep(NA, 8) # the first set of differences will be empty (no period to difference)
 			}
 		}
-
+		
 		if(fullsims == TRUE) {
 			if(ec == TRUE) { # Store them as predicted levels of Y
 				if(constant == FALSE) { # Set this because it changes where LDV is
-					PV_all_sims[,1] <- mean(PV) + set[1]
+					PV_all_sims[,1] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
 				}
 				else {
-					PV_all_sims[,1] <- mean(PV) + set[2] 
+					PV_all_sims[,1] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
 				}
 			} 
 			else {
@@ -1082,21 +1009,21 @@ dynardl <- function(formula,
 		if(ec == TRUE) {
 			if(constant == FALSE) { # Set this because it changes where LDV is
 				if(qoi == "mean") { # If we're summarizing with the mean
-					meanpv[1] <- mean(PV) + set[1] # For levels, we add the prediction onto the first mean value
+					meanpv[1] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T) # For levels, we add the prediction onto the first mean value
 					meandpv[1] <- mean(PV) # For differences, the prediction is the difference: the model is in delta_y
 				}
 				else {
-					meanpv[1] <- median(PV) + set[1] 
+					meanpv[1] <- median(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T) 
 					meandpv[1] <- median(PV)					
 				}
 			} 
 			else {
 				if(qoi == "mean") { # If we're summarizing with the mean
-					meanpv[1] <- mean(PV) + set[2] 
+					meanpv[1] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T) 
 					meandpv[1] <- mean(PV)						
 				}
 				else {
-					meanpv[1] <- median(PV) + set[2] 
+					meanpv[1] <- median(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T) 
 					meandpv[1] <- median(PV)				
 				}
 			}
@@ -1128,15 +1055,16 @@ dynardl <- function(formula,
 				row <- row + 1	# Increment past constant
 			}
 			
-			##### LDVs (MUST HAVE) (these don't depend on shocktime)
-			for(lag in 1:length(lnumdvs)) {		# For each lag in the LDVs 
-				w <- p - lnumdvs[lag]			# w is the time period minus the appropriate lag of the LDV
-				if(w > 0) {	# If LDV exists, meaning we've gone forward enough in time
-					set[row] <- meanpv[w] 	# For that lag of LDV, give it the corresponding PV
-				}	# Else: keep the set where it is, meaning don't replace the lag
-				row <- row + 1					# Move down the setlist (i.e. to the next lag of LDV)
-			}
-			
+			if(max(lnumdvs) > 0) { # If LDV is in model (which it should be, if not forced not)
+				##### LDVs (MUST HAVE) (these don't depend on shocktime)
+				for(lag in 1:length(lnumdvs)) {		# For each lag in the LDVs 
+					w <- p - lnumdvs[lag]			# w is the time period minus the appropriate lag of the LDV
+					if(w > 0) {	# If LDV exists, meaning we've gone forward enough in time
+						set[row] <- meanpv[w] 	# For that lag of LDV, give it the corresponding PV
+					}	# Else: keep the set where it is, meaning don't replace the lag
+					row <- row + 1					# Move down the setlist (i.e. to the next lag of LDV)
+				}				
+			}		
 			##### LDDVs (OPTIONAL) (these don't depend on shocktime)			
 			if(length(ldnumdvs)) {			
 				for(lag in 1:length(ldnumdvs)) {	# For each lag in the LDDVs					
@@ -1238,11 +1166,21 @@ dynardl <- function(formula,
 			if(sig %in% c(75, 90, 95)) {
 				# Upper/lower bounds depend on specifications
 				if(ec == TRUE) { # If ECM, add percentiles to old predicted values
-					if(constant == FALSE) { # Set this because it changes where LDV is
-						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + set[1]
+					if(noLDV == TRUE) { # If no LDV, then hard reference the mean, since no history through LDV
+						if(constant == FALSE) { # Set this because it changes where LDV is
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						}
+						else {
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						}
 					}
-					else {
-						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + set[2]
+					else { # If there is an LDV, we need to use set[] rather than the hard value			
+						if(constant == FALSE) { # Set this because it changes where LDV is
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + set[1]
+						}
+						else {
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975)) + set[2]
+						}
 					}
 					# If it's an ECM, the PVs are the differences as the model is in delta_y
 					d_PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975))				
@@ -1256,15 +1194,25 @@ dynardl <- function(formula,
 			} 
 			else { # If the user needs their own significance value too
 				if(ec == TRUE) { # If ECM, add percentiles to old predicted values
-					if(constant == FALSE) { # Set this because it changes where LDV is
-						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + set[1]
+					if(noLDV == TRUE) { # If no LDV, then hard reference the mean, since no history through LDV					
+						if(constant == FALSE) { # Set this because it changes where LDV is
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						} 
+						else {
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						}
 					} 
 					else {
-						PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + set[2]
+						if(constant == FALSE) { # Set this because it changes where LDV is
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + set[1]
+						} 
+						else {
+							PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) + set[2]
+						}
 					}
 					# If it's an ECM, the PVs are the differences as the model is in delta_y
 					d_PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu))
-				} 
+				} 	
 				else {
 					PV_pctile[p,] <- quantile(PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu)) 
 					# If it's an LDV, the PVs need to be obtained from the differences
@@ -1272,16 +1220,25 @@ dynardl <- function(formula,
 					d_PV_pctile[p,] <- quantile(d_PV, c(0.025, 0.05, 0.125, 0.875, 0.95, 0.975, sigl, sigu))
 				}
 			}
-			
 			if(fullsims == TRUE) {
 				if(ec == TRUE) {
-					if(constant == FALSE) { # Set this because it changes where LDV is
-						PV_all_sims[,p] <- PV + set[1]
-					}
+					if(noLDV == TRUE) { # If no LDV, then hard reference the mean, since no history through LDV
+						if(constant == FALSE) { # Set this because it changes where LDV is
+							PV_all_sims[,p] <- PV + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						}
+						else {
+							PV_all_sims[,p] <- PV + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T) 
+						}
+					} 
 					else {
-						PV_all_sims[,p] <- PV + set[2] 
-					}
-				} 
+						if(constant == FALSE) { # Set this because it changes where LDV is
+							PV_all_sims[,p] <- PV + set[1]
+						}
+						else {
+							PV_all_sims[,p] <- PV + set[2]
+						}
+					} 
+				}
 				else {
 					PV_all_sims[,p] <- PV
 				}
@@ -1291,26 +1248,46 @@ dynardl <- function(formula,
 			if(ec == TRUE) {
 				if(constant == FALSE) {
 					if(qoi == "mean") { # If we're summarizing with the mean
-						meanpv[p] <- mean(PV) + set[1]
+						if(noLDV == TRUE) { # If no LDV, then hard reference the mean, since no history through LDV
+							meanpv[p] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						} 
+						else {
+							meanpv[p] <- mean(PV) + set[1]							
+						}
 						meandpv[p] <- mean(PV) # For differences, the prediction is the difference: the model is in delta_y
 					}
-					else {
-						meanpv[p] <- median(PV) + set[1]
+					else { # if it's the median
+						if(noLDV == TRUE) { # If no LDV, then hard reference the mean, since no history through LDV
+							meanpv[p] <- median(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						}
+						else {
+							meanpv[p] <- median(PV) + set[1]							
+						}
 						meandpv[p] <- median(PV) # For differences, the prediction is the difference: the model is in delta_y
 					}
 				} 
 				else {
 					if(qoi == "mean") { # If we're summarizing with the mean
-						meanpv[p] <- mean(PV) + set[2]
+						if(noLDV == TRUE) { # If no LDV, then hard reference the mean, since no history through LDV
+							meanpv[p] <- mean(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						}
+						else {
+							meanpv[p] <- mean(PV) + set[2]							
+						}
 						meandpv[p] <- mean(PV) # For differences, the prediction is the difference: the model is in delta_y
 					}
-					else {
-						meanpv[p] <- median(PV) + set[2]
+					else { # if it's the median
+						if(noLDV == TRUE) { # If no LDV, then hard reference the mean, since no history through LDV
+							meanpv[p] <- median(PV) + mean(as.matrix(data[[as.character(formula[[2]])]]), na.rm = T)
+						}
+						else { # if it's the median
+							meanpv[p] <- median(PV) + set[2]							
+						}
 						meandpv[p] <- median(PV)	 # For differences, the prediction is the difference: the model is in delta_y
 					}
 				}
-			} 
-			else {
+			} 	
+			else { # if it's in levels
 				if(qoi == "mean") { # If we're summarizing with the mean
 					meanpv[p] <- mean(PV)
 					meandpv[p] <- mean(d_PV)			
@@ -1361,42 +1338,22 @@ dynardl <- function(formula,
 		#########################
 		# Establish data output #
 		#########################
-		if(ec == TRUE) {
-			if(fullsims == TRUE) {
-				out <- list(z, res, pssbounds, all.sims)
-				names(out) <- c("simulation", "model", "pssbounds", "rawsims")
-				out$simulation$shocktime <- time				
-			}
-			else {
-				out <- list(z, res, pssbounds)
-				names(out) <- c("simulation", "model", "pssbounds")
-				out$simulation$shocktime <- time
-			}
-		}
-		else {
-			if(fullsims == TRUE) {
+		if(fullsims == TRUE) {
 				out <- list(z, res, all.sims)
 				names(out) <- c("simulation", "model", "rawsims")
-				out$simulation$shocktime <- time
-			}
-			else {	
-				out <- list(z, res)
-				names(out) <- c("simulation", "model")
-				out$simulation$shocktime <- time
-			}
-		}
-	} # This closes the simulation loop
-	else { # If simulation is false
-		if(ec == TRUE) {
-			out <- list(res, pssbounds)
-			names(out) <- c("model", "pssbounds")
+				out$simulation$shocktime <- time				
 		}
 		else {
-			out <- list(res)
-			names(out) <- c("model")
+			out <- list(z, res)
+			names(out) <- c("simulation", "model")
+			out$simulation$shocktime <- time
 		}
+	} # This closes the simulation brackets
+	else { # If simulation is false
+		out <- list(res)
+		names(out) <- c("model")
 	}
-	class(out) <- "dynardl"  # Apply class dynardl so summary method is called
+	class(out) <- "dynardl"  # Apply class dynardl so summary method is called (and for pssbounds)
 	out	# Send data out	
 }
 
@@ -1589,18 +1546,20 @@ spike.simulation.plot <- function(x, response = "levels", bw = FALSE) {
 ##########################################
 # ------------(7) pssbounds -------------#
 ##########################################
-#' Perform Pesaran, Shin and Smith (2001) cointegration test
-#' @param data an optional \code{\link{dynardl}} model. This option is highly recommended. Users are welcome to supply their own case, t-statistic, F-statistic, and observations, but it is easier to have the model determine these quantities
+#' Perform Pesaran, Shin, and Smith (2001) cointegration test
+#' @param data an optional \code{\link{dynardl}} model. This option is highly recommended. Users are welcome to supply their own case, k regressors, t-statistic, F-statistic, and observations, but it is easier to have the model determine these quantities. If a \code{\link{dynardl}} model is supplied, user-supplied arguments are ignored
 #' @param obs number of observations
-#' @param fstat F-statistic of the joint test that variables in levels are equal to zero: the specific restriction tested 
-#' is \code{l.y + l.x1 + l.x2 + ... + l.xk = 0}
+#' @param fstat F-statistic of the joint test that variables in first lags are equal to zero: the specific restriction tested 
+#' is \code{l.y + l.1.x1 + l.1.x2 + ... + l.1.xk = 0}, except in cases II and IV (see \code{restriction} and \code{case})
 #' @param tstat t-statistic of the lagged dependent variable
-#' @param case specify certain restrictions on the constant and trend terms, since critical values differ by case. Case I: no intercept or trend, Case II: restricted intercept, no trend, Case III: unrestricted intercept with no trend, Case IV: unrestricted intercept and restricted trend, Case V: unrestricted intercept and trend. Case III is most frequently specified
+#' @param case The case of the test, as per Pesaran, Shin, and Smith (2001). Case I: no intercept or trend; case II: restricted intercept, no trend; case III: unrestricted intercept with no trend; case IV: unrestricted intercept and restricted trend; case V: unrestricted intercept and trend. Case III is most frequently specified
+#' @param restriction if you design to test case II or IV of pssbounds, where it is assumed that the constant (case 2) or trend (case 4) are restricted in the resulting F-test, indicate that restriction = \code{TRUE}. If restriction = \code{TRUE} and there is no trend in the regression (trend = \code{FALSE} in \code{\link{dynardl}}), the F-test will include the constant in addition to the lagged dependent variable and lagged regressors in order to test for cointegration under the assumption of a restricted constant (see Pesaran, Shin and Smith [2001], case II). If restriction = \code{TRUE} and there is a trend in the regression (trend = \code{TRUE} in \code{\link{dynardl}}), the F-test will include the trend term in addition to the lagged dependent variable and lagged regressors in order to test for cointegration under the assumption of a restricted trend (see Pesaran, Shin and Smith [2001], case IV). If you are estimating the regular unrestricted ECM (this is more common), restriction = \code{FALSE}. The default is \code{FALSE}
 #' @param k number of regressors appearing in levels in the estimated model, not including the lagged dependent variable
 #' @param digits the number of digits to round to when showing output. The default is \code{3}
 #' @param object.out if \code{TRUE}, and \code{pssbounds} is assigned to an object, the test quantities will be stored for the user's convenience
 #' @details
 #' pssbounds performs post-estimation cointegration testing using the bounds testing procedure from Pesaran, Shin, and Smith (2001). Since test statistics vary based on the number of \code{k} regressors, length of the series, these are required, in addition to F- and t-statistics
+#' @importFrom stats coef vcov
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords cointegration
 #' @examples
@@ -1618,36 +1577,146 @@ spike.simulation.plot <- function(x, response = "levels", bw = FALSE) {
 #' pssbounds(ardl.model)
 #' @export
 
-pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, case = NULL, k = NULL, digits = 3, object.out = FALSE) {
-	# If the model wasn't error correcting, we tell the user
-	if(!(identical(data, list()))) {
-		if(data$model$EC == FALSE) {
-			stop("pssbounds only for error-correcting relationships. See Philips (2018).")
-		} else if(identical(data$pssbounds, "pssbounds not executed: no variables in first lags, so no cointegrating relationship implied.")) {
-			stop("pssbounds not executed: no variables in first lags, so no cointegrating relationship implied.")
+pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, case = NULL, k = NULL, restriction = FALSE, digits = 3, object.out = FALSE) {
+	# First check: was it passed something in data?
+	if(identical(data, list())) { # If not (if we're working from user args)
+		if(identical(obs, NULL)) {
+			stop("Provide either number of observations (obs = ) or data = dynardl model object.")
+		} else if(identical(fstat, NULL)) {
+			stop("Provide either fstat on lagged variables (fstat = ) or data = dynardl model object.")
+		} else if(identical(case, NULL)) {
+			stop("Provide either case of regression (case = ) or data = dynardl model object.")
+		} else if(identical(k, NULL)) {
+			stop("Provide either k number of lagged variables (k = ) or data = dynardl model object.")
 		}
-	}	
-	# Check if it was passed a dynardl object
-	if(!(identical(data, list()))) {
-		obs <- data$pssbounds$obs
-		fstat <- data$pssbounds$fstat
-		tstat <- data$pssbounds$tstat
-		case <- data$pssbounds$case
-		k <- data$pssbounds$k
 	}
-	# Check if we have all arguments
-	if(identical(obs, NULL)) {
-		stop("Provide either number of observations (obs = ) or data = dynardl model object.")
-	} else if(identical(fstat, NULL)) {
-		stop("Provide either fstat on lagged variables (fstat = ) or data = dynardl model object.")
-	} else if(identical(case, NULL)) {
-		stop("Provide either case of regression (case = ) or data = dynardl model object.")
-	} else if(identical(k, NULL)) {
-		stop("Provide either k number of lagged variables (k = ) or data = dynardl model object.")
+	else { # If data is not empty
+		# Stops for invalid models/arguments
+		if(!(identical(class(data), "dynardl"))) { # Check if data are from dynardl
+			stop("To execute pssbounds, supply either a dynardl model or each argument of pssbounds.")
+		} else if(data$model$EC == FALSE) {
+			stop("pssbounds only for error-correcting relationships. See Philips (2018).")
+		} else if(data$model$ldv == FALSE) {
+			stop("pssbounds only for models that include a lagged dependent variable (LDV). See Philips (2018).")
+		}	
+		# Only possible if a variable (implied error-correcting) is in first lags, Isolate variables in model in first lags
+		# Define three old arguments from legacy code (res, constant, and trend) from when this was in dynardl
+		res <- data$model
+		B <- coef(res)
+		V <- vcov(res)
+		constant <- ifelse("(Intercept)" %in% names(coef(res)), TRUE, FALSE)
+		trend <- ifelse("trendvar" %in% names(coef(res)), TRUE, FALSE)
+		R.temp <- rep(NA, length(coef(res)))
+		for(i in 1:length(R.temp)) {
+			# If that variable is a first lag, it's in the restriction set. 0 if not
+			ifelse(grepl("l.1.", names(coef(res))[i]) == TRUE, R.temp[i] <- 1, R.temp[i] <- 0)
+			# Except if it's the LDV, we don't want it
+			# ifelse(names(coef(res))[i] == paste(ldvnamelist), R.temp[i] <- 0, R.temp[i] <- R.temp[i])
+		}
+		k.temp.fun <- sum(R.temp) - 1 # The LDV is automatically added. So if it's the only variable in first lags, this will be zero
+		if(k.temp.fun < 1) { # Either if no other variables in lags, or no LDV, or both
+			stop("pssbounds not executed: no variables in first lags, so no cointegrating relationship implied.")
+		} 
+		else {
+			if(trend == TRUE) {
+				if(constant == FALSE) {
+					case.fun <- 0
+				}
+				else {
+					if(restriction == TRUE) {
+						case.fun <- 4
+						for(i in 1:length(R.temp)) {
+							ifelse(grepl("trendvar", names(coef(res))[i]) == TRUE, R.temp[i] <- 1, R.temp[i] <- R.temp[i])	
+						}
+					}
+					else {
+						case.fun <- 5
+					}
+				}
+			}
+			else {
+				if(constant == FALSE) {
+					case.fun <- 1
+				}
+				else {
+					if(restriction == TRUE) {
+						case.fun <- 2
+						for(i in 1:length(R.temp)) {
+							ifelse(grepl("(Intercept)", names(coef(res))[i]) == TRUE, R.temp[i] <- 1, R.temp[i] <- R.temp[i])	
+						}
+					} 
+					else {
+						case.fun <- 3
+					}
+				}
+			}
+			k.fun <- sum(R.temp)			
+			tstat.fun <- coef(summary(res))[paste(paste("l.1.", res$y.name, sep = "")),3] # t stat on LDV
+			obs.fun <- length(res$residuals) # number of observations in model
+			# This needs to be expanded so that each hypothesis gets its own row
+			R <- matrix(rep(0, length(coef(res))*k.fun), nrow = k.fun)
+			the.row <- 1
+			for(i in 1:length(R.temp)){
+				if(R.temp[i] == 1) { # If that model coefficient is a first lag
+					R[the.row, i] <- 1	# Then that row gets a 1 where the coefficient is
+					the.row <- the.row + 1
+				}			
+			}
+			# Restriction is always that it's equal to 0
+			q <- 0
+			fstat.fun <- (1/k.fun)*t(R%*%B-q)%*%solve(R%*%V%*%t(R))%*%(R%*%B-q)	
+			pssbounds <- data.frame(obs.fun, k.temp.fun, tstat.fun, fstat.fun, case.fun) # k statistic here EXCLUDES the LDV
+			names(pssbounds) <- c("obs", "k", "tstat", "fstat", "case")
+		}
+	} # End creating args from dynardl object
+	# Now check against user args
+	if(!(identical(data, list()))) { # If there was a model provided
+		if(!(identical(NULL, obs))) { # If the user passed obs in addition to model
+			if(!(identical(obs, pssbounds$obs))) { # If it doens't match dynardl, warning!
+				warning(paste(paste(paste("Observations supplied ("), paste(obs), paste(") different from observations calculated by dynardl ("), 
+					paste(pssbounds$obs), paste("). 	Data from dynardl used."), sep = ""), "\n", 
+				paste("To execute bounds test with user data, run pssbounds() and supply each argument without a dynardl model.")))		
+			}
+		}
+		if(!(identical(NULL, fstat))) { # If the user passed fstat in addition to model
+			if(!(identical(fstat, pssbounds$fstat))) {
+				warning(paste(paste(paste("F-stat supplied ("), paste(fstat), paste(") different from F-stat calculated by dynardl ("), 
+					paste(pssbounds$fstat), paste("). Data from dynardl used."), sep = ""), "\n",
+			paste("To execute bounds test with user data, run pssbounds() and supply each argument without a dynardl model.")))	
+			}
+		}
+		if(!(identical(NULL, tstat))) { # If the user passed tstat in addition to model
+			if(!(identical(tstat, pssbounds$tstat))) {
+				warning(paste(paste(paste("t-stat supplied ("), paste(fstat), paste(") different from t-stat calculated by dynardl ("), 
+					paste(pssbounds$tstat), paste("). Data from dynardl used."), sep = ""), "\n",
+				paste("To execute bounds test with user data, run pssbounds() and supply each argument without a dynardl model.")))	
+			}
+		}
+		if(!(identical(NULL, case))) { # If the user passed case in addition to model
+			if(!(identical(case, pssbounds$case))) {
+				warning(paste(paste(paste("Case supplied ("), paste(case), paste(") different from case calculated by dynardl ("), 
+					paste(pssbounds$case), paste("). Data from dynardl used."), sep = ""), "\n",
+				paste("To execute bounds test with user data, run pssbounds() and supply each argument without a dynardl model.")))
+			}
+		}
+		if(!(identical(NULL, k))) { # If the user passed k in addition to model
+			if(!(identical(k, pssbounds$k))) {
+				warning(paste(paste(paste("k supplied ("), paste(case), paste(") different from k calculated by dynardl ("), 
+					paste(pssbounds$k), paste("). Data from dynardl used."), sep = ""), "\n",
+				paste("To execute bounds test with user data, run pssbounds() and supply each argument without a dynardl model.")))	
+			}
+		}
+		# And finally, assign them the dynardl values anyway (after warning)
+		obs <- pssbounds$obs
+		fstat <- pssbounds$fstat
+		tstat <- pssbounds$tstat
+		case <- pssbounds$case
+		k <- pssbounds$k
 	}
+	# Find critical values
 	cases <- seq(1, 5, 1)
 	cases.roman <- c("I", "II", "III", "IV", "V")
-	fnote <- tnote <- NULL
+	fnote <- tnote <- cnote <- NULL
 	if((case %in% cases.roman) == TRUE) {
 		if(case == "I") {case <- 1}
 		else if (case == "II") {case <- 2}
@@ -3265,26 +3334,37 @@ pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, cas
 				"-                       t-test                       -",
 				"------------------------------------------------------",
 				"                <------- I(0) ------------ I(1) ----->",
-				paste("10% critical value", paste( t_10_0, t_10_1, sep = "            "), sep = "       "),
-				paste("5% critical value", paste( t_05_0, t_05_1, sep = "            "), sep = "        "),
-				paste("1% critical value", paste( t_01_0, t_01_1, sep = "            "), sep = "        "),
+				paste("10% critical value", paste( format(t_10_0, digits = 3, nsmall = 2), format(t_10_1, digits = 3, nsmall = 2), sep = "            "), sep = "       "),
+				paste("5% critical value", paste( format(t_05_0, digits = 3, nsmall = 2), format(t_05_1, digits = 3, nsmall = 2), sep = "            "), sep = "        "),
+				paste("1% critical value", paste( format(t_01_0, digits = 3, nsmall = 2), format(t_01_1, digits = 3, nsmall = 2), sep = "            "), sep = "        "),
 				"\n",
 				paste("t statistic = ", tstat, sep = ""), sep = "\n ")
 			}
 		}
 	# Output
+	if(case == 1) {
+		cnote <- "(No intercept; no trend)"
+	} else if(case == 2) {
+		cnote <- "(Intercept included in F-stat restriction; no trend)"		
+	} else if(case == 3) {
+		cnote <- "(Unrestricted intercept; no trend)"		
+	} else if(case == 4) {
+		cnote <- "(Unrestricted intercept; trend included in F-stat restriction)"		
+	} else if(case == 5) {
+		cnote <- "(Unrestricted intercept; unrestricted trend)"		
+	}
 	cat("\n",
 		"PESARAN, SHIN AND SMITH (2001) COINTEGRATION TEST", "\n\n",
 		paste("Observations: ", obs, sep = ""), "\n",
-		paste("Number of Regressors (k): ", k, sep = ""), "\n",
-		paste("Case: ", case, sep = ""), "\n\n",
+		paste("Number of Lagged Regressors (not including LDV) (k): ", k, sep = ""), "\n",
+		paste("Case:", case, cnote, sep = " "), "\n\n",
 		"------------------------------------------------------", "\n",
 		"-                       F-test                       -", "\n",
 		"------------------------------------------------------", "\n",
 		"                <------- I(0) ------------ I(1) ----->", "\n",
-		paste("10% critical value", paste(f_10_0, f_10_1, sep = "            "), sep = "       "), "\n",
-		paste("5% critical value", paste(f_05_0, f_05_1, sep = "            "), sep = "        "), "\n",
-		paste("1% critical value", paste(f_01_0, f_01_1, sep = "            "), sep = "        "), "\n",
+		paste("10% critical value", paste(format(f_10_0, digits = 3, nsmall = 2), format(f_10_1, digits = 3, nsmall = 2), sep = "            "), sep = "       "), "\n",
+		paste("5% critical value", paste(format(f_05_0, digits = 3, nsmall = 2), format(f_05_1, digits = 3, nsmall = 2), sep = "            "), sep = "        "), "\n",
+		paste("1% critical value", paste(format(f_01_0, digits = 3, nsmall = 2), format(f_01_1, digits = 3, nsmall = 2), sep = "            "), sep = "        "), "\n",
 		"\n\n",
 		paste("F-statistic = ", fstat, sep = ""), "\n",
 		toutput,
@@ -3341,81 +3421,79 @@ pssbounds <- function(data = list(), obs = NULL, fstat = NULL, tstat = NULL, cas
 
 dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NULL, object.out = FALSE) { # dw.alt = "greater",
 	out <- list()
-	if("model" %in% names(x)) {
-		if(!(is.null(order))) {
-			out$bg <- bgtest(x$model, type = bg.type, order = order)
-		} else {
-			out$bg <- bgtest(x$model, type = bg.type)
-		}
-		# out$dw <- dwtest(x$model, alternative = dw.alt)
-		out$sw <- shapiro.test(x$model$residuals)
-		out$AIC <- round(AIC(x$model), digits = digits)
-		out$BIC <- round(BIC(x$model), digits = digits)
-		out$logLik <- round(logLik(x$model), digits = digits)
-		flush.console()
-		cat("\n",
-			"------------------------------------------------------", "\n",
-			"Breusch-Godfrey LM Test", "\n",
-			paste("Test statistic:", round(out$bg$statistic, digits = 3), sep = " "), "\n",
-			paste("p-value:", round(out$bg$p.value, digits = 3), sep = " "), "\n",
-			paste("H_0: no autocorrelation up to AR", out$bg$parameter[1], sep = " "), "\n",
-			
-			"\n",
-			"------------------------------------------------------", "\n",
-			#
-			#"Durbin-Watson Test", "\n",
-			#paste("Test statistic:", round(out$dw$statistic, digits = 3), sep = " "), "\n",
-			#paste("p-value:", round(out$dw$p.value, digits = 3), sep = " "), "\n",
-			#paste("H_0: no AR(1) autocorrelation"), "\n",
-			#if(dw.alt == "greater") {
-			#print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is greater than 0.")	
-			#} else if(dw.alt == "two.sided") {
-			#	print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is greater OR less than 0 (two-sided).")		
-			#} else if(dw.alt == "less") {
-			#print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is less than 0.")		
-			#}
-			#	
-			#"\n",
-			#"------------------------------------------------------", "\n",
-			
-			"Shapiro-Wilk Test for Normality", "\n",
-			paste("Test statistic:", round(out$sw$statistic, digits = 3), sep = " "), "\n",
-			paste("p-value:", round(out$sw$p.value, digits = 3), sep = " "), "\n",
-			paste("H_0: residuals are distributed normal"), "\n",
-			
-			"\n",
-			"------------------------------------------------------", "\n",
-			paste("Log-likelihood:", round(out$logLik, digits = digits), sep = " "), "\n",
-			paste("AIC:", round(out$AIC, digits = digits), sep = " "), "\n",
-			paste("BIC:", round(out$BIC, digits = digits), sep = " "), "\n",
-			paste("Note: AIC and BIC calculated with k =", x$model$rank, "on T =", length(x$model$residuals), "observations.", sep = " "), "\n",
-			
-			"\n",
-			"------------------------------------------------------", "\n")
-			if(round(out$bg$p.value, digits = 3) < 0.01) {
-				cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.01.", "\n",	
-				"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
-			} else if(round(out$bg$p.value, digits = 3) < 0.05) {
-				cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.05.", "\n",
-				"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
-			} else if(round(out$bg$p.value, digits = 3) < 0.10) {
-				cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.10.", "\n", 		
-				"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
-			}
-			if(round(out$sw$p.value, digits = 3) < 0.01) {
-				cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.01.", "\n")	
-			} else if(round(out$sw$p.value, digits = 3) < 0.05) {
-				cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.05.", "\n")		
-			} else if(round(out$sw$p.value, digits = 3) < 0.10) {
-				cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.10.", "\n")		
-			}
-			if(object.out == TRUE) {
-				out
-		}		
+	if(!(identical(class(x), "dynardl"))) { # Check if data are from dynardl
+		stop("To test autocorrelation, provide a dynardl model object.")
 	}
-	else {
-		stop("Provide a dynardl object to test auto-correlation of residuals.")
-	}	
+	if(!(is.null(order))) {
+		out$bg <- bgtest(x$model, type = bg.type, order = order)
+	} else {
+		out$bg <- bgtest(x$model, type = bg.type)
+	}
+	# out$dw <- dwtest(x$model, alternative = dw.alt)
+	out$sw <- shapiro.test(x$model$residuals)
+	out$AIC <- round(AIC(x$model), digits = digits)
+	out$BIC <- round(BIC(x$model), digits = digits)
+	out$logLik <- round(logLik(x$model), digits = digits)
+	flush.console()
+	cat("\n",
+		"------------------------------------------------------", "\n",
+		"Breusch-Godfrey LM Test", "\n",
+		paste("Test statistic:", round(out$bg$statistic, digits = digits), sep = " "), "\n",
+		paste("p-value:", round(out$bg$p.value, digits = digits), sep = " "), "\n",
+		paste("H_0: no autocorrelation up to AR", out$bg$parameter[1], sep = " "), "\n",
+		
+		"\n",
+		"------------------------------------------------------", "\n",
+		#
+		#"Durbin-Watson Test", "\n",
+		#paste("Test statistic:", round(out$dw$statistic, digits = 3), sep = " "), "\n",
+		#paste("p-value:", round(out$dw$p.value, digits = 3), sep = " "), "\n",
+		#paste("H_0: no AR(1) autocorrelation"), "\n",
+		#if(dw.alt == "greater") {
+		#print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is greater than 0.")	
+		#} else if(dw.alt == "two.sided") {
+		#	print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is greater OR less than 0 (two-sided).")		
+		#} else if(dw.alt == "less") {
+		#print("Durbin-Watson null hypothesis: autocorrelation of residuals is 0. Alternative hypothesis: autocorrelation of residuals is less than 0.")		
+		#}
+		#	
+		#"\n",
+		#"------------------------------------------------------", "\n",
+		
+		"Shapiro-Wilk Test for Normality", "\n",
+		paste("Test statistic:", round(out$sw$statistic, digits = digits), sep = " "), "\n",
+		paste("p-value:", round(out$sw$p.value, digits = digits), sep = " "), "\n",
+		paste("H_0: residuals are distributed normal"), "\n",
+		
+		"\n",
+		"------------------------------------------------------", "\n",
+		paste("Log-likelihood:", round(out$logLik, digits = digits), sep = " "), "\n",
+		paste("AIC:", round(out$AIC, digits = digits), sep = " "), "\n",
+		paste("BIC:", round(out$BIC, digits = digits), sep = " "), "\n",
+		paste("Note: AIC and BIC calculated with k =", x$model$rank, "on T =", length(x$model$residuals), "observations.", sep = " "), "\n",
+		
+		"\n",
+		"------------------------------------------------------", "\n")
+		if(round(out$bg$p.value, digits = digits) < 0.01) {
+			cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.01.", "\n",	
+			"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
+		} else if(round(out$bg$p.value, digits = digits) < 0.05) {
+			cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.05.", "\n",
+			"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
+		} else if(round(out$bg$p.value, digits = digits) < 0.10) {
+			cat("Breusch-Godfrey test indicates we reject the null hypothesis of no autocorrelation at p < 0.10.", "\n", 		
+			"Add lags to remove autocorrelation before running dynardl simulations.", "\n")	
+		}
+		if(round(out$sw$p.value, digits = digits) < 0.01) {
+			cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.01.", "\n")	
+		} else if(round(out$sw$p.value, digits = digits) < 0.05) {
+			cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.05.", "\n")		
+		} else if(round(out$sw$p.value, digits = digits) < 0.10) {
+			cat("Shapiro-Wilk test indicates we reject the null hypothesis of normality at p < 0.10.", "\n")		
+		}
+		if(object.out == TRUE) {
+			out
+	}		
 }
 
 
@@ -3428,8 +3506,7 @@ dynardl.auto.correlated <- function(x, bg.type = "Chisq", digits = 3, order = NU
 #' @param ... additional arguments in the generic summary call
 #' @return A summary of the fitted ARDL model.
 #' @details
-#' \code{dynardl}, by default, stores regression results in \code{foo$model}. This calls those results 
-#' directly with \code{summary}
+#' \code{dynardl}, by default, stores regression results in \code{foo$model}. This calls those results directly with \code{summary}
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
 #' @examples
@@ -3453,31 +3530,19 @@ summary.dynardl <- function(object, ...) {
 #' Create a plot of a simulated response in a \code{\link{dynardl}} model
 #' @param x a \code{dynardl} model with a simulation to be plotted
 #' @param type whether the plot should be an area plot (\code{area}) or a spike plot (\code{spike})
-#' @param response whether the plot of the response should be shown in levels of the dependent variable (\code{levels}), 
-#' levels from the mean of the dependent variable (\code{levels.from.mean}), period-over-period changes in the
-#' dependent variable (\code{diffs}), the absolute value of the (decreasing) change in the dependent variable 
-#' in each time period due to the shock (\code{shock.effect.decay}), the sum of the period-over-period changes (\code{cumulative.diffs}), 
-#' or the absolute value of the cumulative differences (\code{cumulative.abs.diffs}). The default is \code{levels}
+#' @param response whether the plot of the response should be shown in levels of the dependent variable (\code{levels}), levels from the mean of the dependent variable (\code{levels.from.mean}), period-over-period changes in the dependent variable (\code{diffs}), the absolute value of the (decreasing) change in the dependent variable  in each time period due to the shock (\code{shock.effect.decay}), the sum of the period-over-period changes (\code{cumulative.diffs}), or the absolute value of the cumulative differences (where negative effects are treated as positive) (\code{cumulative.abs.diffs}). The default is \code{levels}
 #' @param bw should the colors be in black and white (for publication)? The default is \code{FALSE}
 #' @param ylab a user-defined y-label to be used instead of the default
 #' @param xlab a user-defined x-label to be used instead of the default
-#' @param tol when deciding when to stop calculating the absolute value of the shocks to the dependent variable, 
-#' you can specify the minimum amount of movement required to qualify as a non-noise change over time periods 
-#' (for calculating absolute cumulative differences). The default is 0.1 percent of the mean
-#' of the dependent variable. Specify a \code{tol} or a \code{last.period}.
-#' If both are specified, \code{last.period} overrides \code{tol}
-#' @param start.period which period of the simulation to begin the plot with. You can view the equilibriating behavior of the
-#' dependent variable, or you can skip forward in time (maybe to just before the shock). The default is \code{1} 
-#' (the first period of the simulation)
-#' @param last.period when deciding when to stop calculating the absolute value of the shocks to the dependent variable,
-#' you can specify a specific period in which to stop calculating absolute cumulative differences. Specify a \code{tol} or a \code{last.period}.
-#' If both are specified, \code{last.period} overrides \code{tol}
+#' @param ylim a user-defined y-limit to be used instead of the default (for instance, for shared axes)
+#' @param tol when deciding when to stop calculating the absolute value of the shocks to the dependent variable, you can specify the minimum amount of movement required to qualify as a non-noise change over time periods (for calculating absolute cumulative differences). The default is 0.1 percent of the mean of the dependent variable. Specify a \code{tol} or a \code{last.period}. If both are specified, \code{last.period} overrides \code{tol}
+#' @param start.period which period of the simulation to begin the plot with. You can view the equilibriating behavior of the dependent variable, or you can skip forward in time (maybe to just before the shock). The default is \code{1} (the first period of the simulation)
+#' @param last.period when deciding when to stop calculating the absolute value of the shocks to the dependent variable, you can specify a specific period in which to stop calculating absolute cumulative differences. Specify a \code{tol} or a \code{last.period}. If both are specified, \code{last.period} overrides \code{tol}
+#' @param abs.errors when calculating confidence for the absolute cumulative effect, should differences accumulate in each time time period (\code{cumulate}, which could be explosive if the error in the model is large), should differences be observed at each time (\code{within.period}, which will have smaller values in equilibrium than when changing), or should only the values be plotted (\code{none}). The default is \code{none}
 #' @param ... other arguments to be passed to the call to plot
 #' @return a plot of the simulated dynardl model
 #' @details
-#' When running \code{dynardl}, \code{simulate} must be true so that there is a simulation to plot. For types
-#' \code{cumulative.diffs} and \code{cumulative.abs.diffs}, \code{fullsims} must be \code{TRUE} in the 
-#' \code{dynardl} simulation
+#' When running \code{dynardl}, \code{simulate} must be \code{TRUE} so that there is a simulation to plot. For types \code{cumulative.diffs} and \code{cumulative.abs.diffs}, \code{fullsims} must be \code{TRUE} in the \code{dynardl} simulation
 #' @importFrom graphics lines plot points polygon segments
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
@@ -3502,7 +3567,10 @@ summary.dynardl <- function(object, ...) {
 #' dynardl.simulation.plot(ardl.model, bw = TRUE)	 
 #' @export
 
-dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = FALSE, last.period = NULL, tol = (abs(x$model$ymean) * 0.01), start.period = 1, ylab = "", xlab = "", ...) {
+dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = FALSE, last.period = NULL, tol = (abs(x$model$ymean) * 0.01), start.period = 1, abs.errors = "none", ylim = NULL, ylab = NULL, xlab = NULL, ...) {
+	if(!(identical(class(x), "dynardl"))) { # Check if data are from dynardl
+		stop("To plot simulation, provide a dynardl model object (with a simulation).")
+	}
 	if(x$model$simulate == FALSE) {
 		stop("dynardl object does not include simulation to plot.")
 	}
@@ -3511,6 +3579,9 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 	}
 	if(!(type %in% c("area", "spike"))) {
 		stop("Plot type must be either an area plot ('area') or a spike plot ('spike').")
+	}
+	if(x$model$ldv == FALSE) {
+		warning("Responses are from a model with no lagged dependent variable (LDV): are you sure you want this?")
 	}
 	z <- x$simulation
 	z <- z[c(start.period:length(z$shocktime)),]
@@ -3530,8 +3601,9 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 		}
 	}
 	if(response == "levels") { # If we're just plotting levels of Y
-		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)), 
-			ylab = ifelse(ylab == "", "Y Value", ylab), xlab = ifelse(xlab == "", "Time", xlab), ...)
+		plot(z$time, z$ll95, type = "n", 
+			ylim = ifelse(c(is.null(ylim), is.null(ylim)), c(min(z$ll95), max(z$ul95)), ylim),
+			ylab = ifelse(is.null(ylab), "Y Value", ylab), xlab = ifelse(is.null(xlab), "Time", xlab), ...)
 		if(type == "area") { 
 			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = ifelse(bw == FALSE, "skyblue1", "grey70"), border = NA) # 95
 			polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = ifelse(bw == FALSE, "skyblue3", "grey50"), border = NA) # 90
@@ -3554,14 +3626,15 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 	} 
 	else if(response == "levels.from.mean") { # If it's changes from the mean, changes values, same code
 		z$ll95 <- z$ll95 - x$model$ymean
-		z$ul95 <- z$ul95 - x$model$ymean
 		z$ll90 <- z$ll90 - x$model$ymean
-		z$ul90 <- z$ul90 - x$model$ymean
 		z$ll75 <- z$ll75 - x$model$ymean
 		z$ul75 <- z$ul75 - x$model$ymean
+		z$ul90 <- z$ul90 - x$model$ymean
+		z$ul95 <- z$ul95 - x$model$ymean
 		z$central <- z$central - x$model$ymean
-		plot(z$time, z$ll95, type = "n", ylim = c(min(z$ll95), max(z$ul95)),
-			ylab = ifelse(ylab == "", "Changes from Y Mean Value", ylab), xlab = ifelse(xlab == "", "Time", xlab), ...)
+		plot(z$time, z$ll95, type = "n",
+			ylim = ifelse(c(is.null(ylim), is.null(ylim)), c(min(z$ll95), max(z$ul95)), ylim),
+			ylab = ifelse(is.null(ylab), "Changes from Y Mean Value", ylab), xlab = ifelse(is.null(xlab), "Time", xlab), ...)
 		if(type == "area") {
 			polygon(c(z$time, rev(z$time)), c(z$ul95, rev(z$ll95)), col = ifelse(bw == FALSE, "skyblue1", "grey70"), border = NA) # 95
 			polygon(c(z$time, rev(z$time)), c(z$ul90, rev(z$ll90)), col = ifelse(bw == FALSE, "skyblue3", "grey50"), border = NA) # 90
@@ -3583,8 +3656,9 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 		}
 	}
 	else if(response == "diffs") { # If it's differences in Y
-		plot(z$time, z$d.ll95, type = "n", ylim = c(min(z$d.ll95), max(z$d.ul95)), 
-			ylab = ifelse(ylab == "", "Change in Y Value", ylab), xlab = ifelse(xlab == "", "Time", xlab), ...)
+		plot(z$time, z$d.ll95, type = "n",
+			ylim = ifelse(c(is.null(ylim), is.null(ylim)), c(min(z$d.ll95), max(z$d.ul95)), ylim),
+			ylab = ifelse(is.null(ylab), "Change in Y Value", ylab), xlab = ifelse(is.null(xlab), "Time", xlab), ...)
 		if(type == "area") { 
 			polygon(c(z$time, rev(z$time)), c(z$d.ul95, rev(z$d.ll95)), col = ifelse(bw == FALSE, "skyblue1", "grey70"), border = NA) # 95
 			polygon(c(z$time, rev(z$time)), c(z$d.ul90, rev(z$d.ll90)), col = ifelse(bw == FALSE, "skyblue3", "grey50"), border = NA) # 90
@@ -3633,8 +3707,9 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 			d.central[i] <- ifelse(identical(x$rawsims$central[1], "median"), median(cum.diff.sims[,i], na.rm = T), mean(cum.diff.sims[,i], na.rm = T))
 		}
 		time <- seq(start.period, (ncol(cum.diff.sims) + start.period - 1), 1)
-		plot(time, d.ll95, type = "n", ylim = c(min(d.ll95, na.rm = T), max(d.ul95, na.rm = T)), 
-			ylab = ifelse(ylab == "", "Cumulative Change in Y Value", ylab), xlab = ifelse(xlab == "", "Time", xlab), ...)
+		plot(time, d.ll95, type = "n", 
+			ylim = ifelse(c(is.null(ylim), is.null(ylim)), c(min(d.ll95, na.rm = T), max(d.ul95, na.rm = T)), ylim),
+			ylab = ifelse(is.null(ylab), "Cumulative Change in Y Value", ylab), xlab = ifelse(is.null(xlab), "Time", xlab), ...)
 		if(type == "area") { 
 			polygon(c(time, rev(time)), c(d.ul95, rev(d.ll95)), col = ifelse(bw == FALSE, "skyblue1", "grey70"), border = NA) # 95
 			polygon(c(time, rev(time)), c(d.ul90, rev(d.ll90)), col = ifelse(bw == FALSE, "skyblue3", "grey50"), border = NA) # 90
@@ -3668,8 +3743,9 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 				z$d.ll95[i] <- temp[6]
 			}
 		}
-		plot(z$time, z$d.ll95, type = "n", ylim = c(min(z$d.ll95), max(z$d.ul95)), 
-			ylab = ifelse(ylab == "", "Shock Effect Value", ylab), xlab = ifelse(xlab == "", "Time", xlab), ...)
+		plot(z$time, z$d.ll95, type = "n",
+			ylim = ifelse(c(is.null(ylim), is.null(ylim)), c(min(z$d.ll95), max(z$d.ul95)), ylim),
+			ylab = ifelse(is.null(ylab), "Shock Effect Value", ylab), xlab = ifelse(is.null(xlab), "Time", xlab), ...)
 		if(type == "area") { 
 			polygon(c(z$time, rev(z$time)), c(z$d.ul95, rev(z$d.ll95)), col = ifelse(bw == FALSE, "skyblue1", "grey70"), border = NA) # 95
 			polygon(c(z$time, rev(z$time)), c(z$d.ul90, rev(z$d.ll90)), col = ifelse(bw == FALSE, "skyblue3", "grey50"), border = NA) # 90
@@ -3695,60 +3771,108 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 			stop("dynardl object must have fullsims = TRUE to track cumulative absolute differences.")
 		}
 		a <- x$rawsims[,start.period:ncol(x$rawsims)]
-		# Two matrices: one for the diffs of the raw simulations (by simulation), the other for cumulative
 		# Here, diffs sims is going to be 2:length of simulation, with the first period NA. This is to sync it with the d.central output
-		diff.sims <- cum.diff.sims <- temp.abs.diff.sims <- cum.abs.diff.sims <- matrix(rep(NA, nrow(a)*(ncol(a) - 1)), nrow = nrow(a)) # Last column is central tendency
-		# Track the differences for each simulation		
+		diff.sims <- matrix(rep(NA, nrow(a)*(ncol(a) - 1)), nrow = nrow(a)) # Last column is central tendency
+		# Track the differences for each simulation
 		for(i in 2:ncol(diff.sims)) {
 			diff.sims[,i] <- a[,i] - a[,(i - 1)]
 		}
 		is.changing.test <- is.changing
 		if(identical(is.changing, NULL)) {
 			is.changing.test <- 1
-		}
-		# Up until the shocktime, we're going to take regular diffs, NOT absolute, since, they're noise
-		# temp.abs.diff.sims[,2] <- cum.abs.diff.sims[,2] <- diff.sims[,2]
-		for(i in 2:ncol(temp.abs.diff.sims)) {
+		}		
+		temp.ll95 <- temp.ll90 <- temp.ll75 <- temp.ul75 <- temp.ul90 <- temp.ul95 <- temp.central <- rep(NA, ncol(diff.sims))
+		d.ll95 <- d.ul95 <- d.ll90 <- d.ul90 <- d.ll75 <- d.ul75 <- d.central <- rep(NA, ncol(diff.sims))		
+		for(i in 2:ncol(diff.sims)) {
 			if((i + start.period - 1) < x$simulation$shocktime[1]) { # If it's in the equilibriating period before the shock
-				temp.abs.diff.sims[,i] <- diff.sims[,i] # Preserve the regular diffs, NOT absolute, since, they're noise
+				temp.ll95[i] <- quantile(diff.sims[,i], 0.025, na.rm = T) # Preserve the regular diffs, NOT absolute, since, they're noise
+				temp.ll90[i] <- quantile(diff.sims[,i], 0.050, na.rm = T)
+				temp.ll75[i] <- quantile(diff.sims[,i], 0.125, na.rm = T)
+				temp.ul75[i] <- quantile(diff.sims[,i], 0.875, na.rm = T)
+				temp.ul90[i] <- quantile(diff.sims[,i], 0.950, na.rm = T)
+				temp.ul95[i] <- quantile(diff.sims[,i], 0.975, na.rm = T)
+				temp.central[i] <- ifelse(identical(x$rawsims$central[1], "median"), median(diff.sims[,i], na.rm = T), mean(diff.sims[,i], na.rm = T))
+				d.central[i] <- sum(temp.central[1:i], na.rm = T)
 			} else {
-				if((is.changing.test - start.period + 1) >= i) { # If it is still moving on the differences from the beginning,
-					temp.abs.diff.sims[,i] <- abs(diff.sims[,i]) # Preserve the ABSOLUTE changes for that time period
-				} else { # If the changes aren't `real', meaning below our tolerance
-					temp.abs.diff.sims[,i] <- 0 # Replace the `change' (noise) with nothing
+				if((is.changing.test - start.period + 1) >= i) { # if it is moving
+					if(mean(diff.sims[,i]) > 0) { # if the movement is positive
+						temp.central[i] <- ifelse(identical(x$rawsims$central[1], "median"), median(diff.sims[,i], na.rm = T), mean(diff.sims[,i], na.rm = T))
+						d.central[i] <- sum(temp.central[1:i], na.rm = T)
+						if(abs.errors == "cumulate") {
+							temp.ll95[i] <- temp.ll95[i-1] + (quantile(diff.sims[,i], 0.025, na.rm = T))
+							temp.ll90[i] <- temp.ll90[i-1] + (quantile(diff.sims[,i], 0.050, na.rm = T))
+							temp.ll75[i] <- temp.ll75[i-1] + (quantile(diff.sims[,i], 0.125, na.rm = T))
+							temp.ul75[i] <- temp.ul75[i-1] + (quantile(diff.sims[,i], 0.875, na.rm = T))
+							temp.ul90[i] <- temp.ul90[i-1] + (quantile(diff.sims[,i], 0.950, na.rm = T))
+							temp.ul95[i] <- temp.ul95[i-1] + (quantile(diff.sims[,i], 0.975, na.rm = T))
+						} else { # if it's none or within, do the same for the plot scale
+							temp.ll95[i] <- d.central[i] - abs(temp.central[i] - quantile(diff.sims[,i], 0.025, na.rm = T))
+							temp.ll90[i] <- d.central[i] - abs(temp.central[i] - quantile(diff.sims[,i], 0.050, na.rm = T))
+							temp.ll75[i] <- d.central[i] - abs(temp.central[i] - quantile(diff.sims[,i], 0.125, na.rm = T))
+							temp.ul75[i] <- d.central[i] + (quantile(diff.sims[,i], 0.875, na.rm = T) - temp.central[i])
+							temp.ul90[i] <- d.central[i] + (quantile(diff.sims[,i], 0.950, na.rm = T) - temp.central[i])
+							temp.ul95[i] <- d.central[i] + (quantile(diff.sims[,i], 0.975, na.rm = T) - temp.central[i])
+						}
+					} else { # if the movement is negative
+						temp.central[i] <- ifelse(identical(x$rawsims$central[1], "median"), median(diff.sims[,i], na.rm = T)*(-1), mean(diff.sims[,i], na.rm = T)*(-1))
+						d.central[i] <- sum(temp.central[1:i], na.rm = T)
+						if(abs.errors == "cumulate") {
+							temp.ul95[i] <- temp.ul95[i-1] + (quantile(diff.sims[,i], 0.025, na.rm = T)*(-1))
+							temp.ul90[i] <- temp.ul90[i-1] + (quantile(diff.sims[,i], 0.050, na.rm = T)*(-1))
+							temp.ul75[i] <- temp.ul75[i-1] + (quantile(diff.sims[,i], 0.125, na.rm = T)*(-1))
+							temp.ll75[i] <- temp.ll75[i-1] + (quantile(diff.sims[,i], 0.875, na.rm = T)*(-1))
+							temp.ll90[i] <- temp.ll90[i-1] + (quantile(diff.sims[,i], 0.950, na.rm = T)*(-1))
+							temp.ll95[i] <- temp.ll95[i-1] + (quantile(diff.sims[,i], 0.975, na.rm = T)*(-1))
+						} else { # if it's none or within, do the same for the plot scale						
+							temp.ul95[i] <- d.central[i] + (quantile(diff.sims[,i], 0.025, na.rm = T)*(-1) - temp.central[i])
+							temp.ul90[i] <- d.central[i] + (quantile(diff.sims[,i], 0.050, na.rm = T)*(-1) - temp.central[i])
+							temp.ul75[i] <- d.central[i] + (quantile(diff.sims[,i], 0.125, na.rm = T)*(-1) - temp.central[i])
+							temp.ll75[i] <- d.central[i] - abs(temp.central[i] - quantile(diff.sims[,i], 0.875, na.rm = T)*(-1))
+							temp.ll90[i] <- d.central[i] - abs(temp.central[i] - quantile(diff.sims[,i], 0.950, na.rm = T)*(-1))
+							temp.ll95[i] <- d.central[i] - abs(temp.central[i] - quantile(diff.sims[,i], 0.975, na.rm = T)*(-1))
+						}
+					}
+				} else { # if it's not moving, by tol or last.period
+						temp.ll95[i] <- temp.ll95[i-1]
+						temp.ll90[i] <- temp.ll90[i-1]
+						temp.ll75[i] <- temp.ll75[i-1]
+						temp.ul75[i] <- temp.ul75[i-1]
+						temp.ul90[i] <- temp.ul90[i-1]
+						temp.ul95[i] <- temp.ul95[i-1]
+						temp.central[i] <- 0
+						d.central[i] <- sum(temp.central[1:i], na.rm = T)
+					}
 				}
+			d.ll95[i] <- temp.ll95[i] 
+			d.ll90[i] <- temp.ll90[i] 
+			d.ll75[i] <- temp.ll75[i] 
+			d.ul75[i] <- temp.ul75[i] 
+			d.ul90[i] <- temp.ul90[i] 
+			d.ul95[i] <- temp.ul95[i] 
+		}
+		time <- seq(start.period, (ncol(diff.sims) + start.period - 1), 1)
+		plot(time, d.ll95, type = "n", 
+			ylim = ifelse(c(is.null(ylim), is.null(ylim)), c(min(d.ll95, na.rm = T), max(d.ul95, na.rm = T)), ylim),
+			ylab = ifelse(is.null(ylab), "Cumulative Absolute Change in Y Value", ylab), xlab = ifelse(is.null(xlab), "Time", xlab))
+		if(type == "area") {
+			if(abs.errors != "none") {
+				polygon(c(time, rev(time)), c(d.ul95, rev(d.ll95)), col = ifelse(bw == FALSE, "skyblue1", "grey70"), border = NA) # 95
+				polygon(c(time, rev(time)), c(d.ul90, rev(d.ll90)), col = ifelse(bw == FALSE, "skyblue3", "grey50"), border = NA) # 90
+				polygon(c(time, rev(time)), c(d.ul75, rev(d.ll75)), col = "grey30", border = NA) # 75
 			}
-			# Now: the sims we're going to keep and graph: sum over all of them to now
-			cum.abs.diff.sims[,i] <- rowSums(temp.abs.diff.sims[,1:i], na.rm = T)
-		}
-		d.ll95 <- d.ul95 <- d.ll90 <- d.ul90 <- d.ll75 <- d.ul75 <- d.central <- rep(NA, ncol(cum.abs.diff.sims))
-		for(i in 1:ncol(cum.abs.diff.sims)) {
-			d.ll95[i] <- quantile(cum.abs.diff.sims[,i], 0.025, na.rm = T)
-			d.ll90[i] <- quantile(cum.abs.diff.sims[,i], 0.050, na.rm = T)
-			d.ll75[i] <- quantile(cum.abs.diff.sims[,i], 0.125, na.rm = T)
-			d.ul75[i] <- quantile(cum.abs.diff.sims[,i], 0.875, na.rm = T)
-			d.ul90[i] <- quantile(cum.abs.diff.sims[,i], 0.950, na.rm = T)
-			d.ul95[i] <- quantile(cum.abs.diff.sims[,i], 0.975, na.rm = T)
-			d.central[i] <- ifelse(identical(x$rawsims$central[1], "median"), median(cum.abs.diff.sims[,i], na.rm = T), mean(cum.abs.diff.sims[,i], na.rm = T))
-		}
-		time <- seq(start.period, (ncol(cum.abs.diff.sims) + start.period - 1), 1)
-		plot(time, d.ll95, type = "n", ylim = c(min(d.ll95, na.rm = T), max(d.ul95, na.rm = T)), 
-			ylab = ifelse(ylab == "", "Cumulative Absolute Change in Y Value", ylab), xlab = ifelse(xlab == "", "Time", xlab), ...)
-		if(type == "area") { 
-			polygon(c(time, rev(time)), c(d.ul95, rev(d.ll95)), col = ifelse(bw == FALSE, "skyblue1", "grey70"), border = NA) # 95
-			polygon(c(time, rev(time)), c(d.ul90, rev(d.ll90)), col = ifelse(bw == FALSE, "skyblue3", "grey50"), border = NA) # 90
-			polygon(c(time, rev(time)), c(d.ul75, rev(d.ll75)), col = "grey30", border = NA) # 75
 			# Actual response
 			lines(time, d.central, lty = 2, lwd = 3)
 		} else { # if it's a spikeplot
-			for(i in 1:length(time)) { # 95 percent sig
-				segments(time[i], d.ll95[i], time[i], d.ul95[i], lwd = 1, col = ifelse(bw == FALSE, "skyblue1", "grey70"))
-			}
-			for(i in 1:length(time)) { # 90 percent sig
-				segments(time[i], d.ll90[i], time[i], d.ul90[i], lwd = 3, col = ifelse(bw == FALSE, "skyblue3", "grey50"))
-			}
-			for(i in 1:length(z$time)) { # 75 percent sig
-				segments(time[i], d.ll75[i], time[i], d.ul75[i], lwd = 5, col = "grey30")
+			if(abs.errors != "none") {
+				for(i in 1:length(time)) { # 95 percent sig
+					segments(time[i], d.ll95[i], time[i], d.ul95[i], lwd = 1, col = ifelse(bw == FALSE, "skyblue1", "grey70"))
+				}
+				for(i in 1:length(time)) { # 90 percent sig
+					segments(time[i], d.ll90[i], time[i], d.ul90[i], lwd = 3, col = ifelse(bw == FALSE, "skyblue3", "grey50"))
+				}
+				for(i in 1:length(time)) { # 75 percent sig
+					segments(time[i], d.ll75[i], time[i], d.ul75[i], lwd = 5, col = "grey30")
+				}
 			}
 			# Actual response
 			points(time, d.central, lwd = 4)
@@ -3758,39 +3882,33 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 		} else {
 			warning(paste(paste("Cumulative absolute effects assumed to be noise (by tolerance) at t = "), paste(is.changing.test), paste("."), sep = ""))
 		}
+		if(identical(is.changing, NULL)) { # If Y never responds
+			warning("Y does not move beyond the tolerance in the simulation. Reconsider the tolerance, or investigate if Y responds to the shockvar in the dynardl model.")
+		} else if(is.changing == length(z$d.central)) { # If the simulation isn't long enough, potentially
+			warning("Y might still be changing (has not met tolerance) at the end of the simulation. Consider lengthening the simulation in dynardl or adjusting the tolerance.")
+		}
 	}
-	if(identical(is.changing, NULL)) { # If Y never responds
-		warning("Y does not move beyond the tolerance in the simulation. Reconsider the tolerance, or investigate if Y responds to the shockvar in the dynardl model.")
-	} else if(is.changing == length(z$d.central)) { # If the simulation isn't long enough, potentially
-		warning("Y might still be changing (has not met tolerance) at the end of the simulation. Consider lengthening the simulation in dynardl or adjusting the tolerance.")
-	}
-}	
+}
 
 
 #############################################
 # ---------(11) dynardl.all.plots ----------#
 #############################################
 #' Combine all of the potential plots of a simulated response in a \code{\link{dynardl}} model
-#' @param x a \code{dynardl} model with a simulation to be plotted. Since all plots includes absolute cumulative differences, 
-#' \code{fullsims} must be \code{TRUE} in the \code{dynardl} simulation
+#' @param x a \code{dynardl} model with a simulation to be plotted. Since all plots includes absolute cumulative differences, \code{fullsims} must be \code{TRUE} in the \code{dynardl} simulation
 #' @param type whether the plot should be an area plot (\code{area}) or a spike plot (\code{spike})
 #' @param bw should the colors be in black and white (for publication)? The default is \code{FALSE}
-#' @param tol when deciding when to stop calculating the absolute value of the shocks to the dependent variable, 
-#' you can specify the minimum amount of movement required to qualify as a non-noise change over time periods 
-#' (for calculating absolute cumulative differences). The default is 0.1 percent of the mean
-#' of the dependent variable. Specify a \code{tol} or a \code{last.period}.
-#' If both are specified, \code{last.period} overrides \code{tol}
-#' @param start.period which period of the simulation to begin the plot with. You can view the equilibriating behavior of the
-#' dependent variable, or you can skip forward in time (maybe to just before the shock). The default is \code{1} (the first period of the simulation)
-#' @param last.period when deciding when to stop calculating the absolute value of the shocks to the dependent variable,
-#' you can specify a specific period in which to stop calculating absolute cumulative differences. Specify a \code{tol} or a \code{last.period}.
-#' If both are specified, \code{last.period} overrides \code{tol}
+#' @param tol when deciding when to stop calculating the absolute value of the shocks to the dependent variable, you can specify the minimum amount of movement required to qualify as a non-noise change over time periods (for calculating absolute cumulative differences). The default is 0.1 percent of the mean of the dependent variable. Specify a \code{tol} or a \code{last.period}. If both are specified, \code{last.period} overrides \code{tol}
+#' @param start.period which period of the simulation to begin the plot with. You can view the equilibriating behavior of the dependent variable, or you can skip forward in time (maybe to just before the shock). The default is \code{1} (the first period of the simulation)
+#' @param last.period when deciding when to stop calculating the absolute value of the shocks to the dependent variable, you can specify a specific period in which to stop calculating absolute cumulative differences. Specify a \code{tol} or a \code{last.period}. If both are specified, \code{last.period} overrides \code{tol}
+#' @param abs.errors when calculating confidence for the absolute cumulative effect, should differences accumulate in each time time period (\code{cumulate}, which could be explosive if the error in the model is large), should differences be observed at each time (\code{within.period}, which will have smaller values in equilibrium than when changing), or should only the values be plotted (\code{none})
+#' @param ylab a user-defined y-label to be used instead of the default (use caution, as it will be passed to all plots)
+#' @param xlab a user-defined x-label to be used instead of the default (use caution, as it will be passed to all plots)
+#' @param ylim a user-defined y-limit to be used instead of the default (for instance, for shared axes. Use caution, as it will be passed to all plots)
 #' @param ... other arguments to be passed to the call to plot. Use caution, as they will be passed to all plots
 #' @return a 2 x 3 grid of the plots of the simulated dynardl model effects plots
 #' @details
-#' When running \code{dynardl}, \code{simulate} must be \code{TRUE} so that there is a simulation to plot. Also, 
-#' \code{fullsims} must be \code{TRUE} as the plot will contain absolute cumulative differences. See 
-#' \code{\link{dynardl.simulation.plot}} for arguments to the individual plotting types
+#' When running \code{dynardl}, \code{simulate} must be \code{TRUE} so that there is a simulation to plot. Also, \code{fullsims} must be \code{TRUE} as the plot will contain absolute cumulative differences. See \code{\link{dynardl.simulation.plot}} for arguments to the individual plotting types
 #' @importFrom graphics lines plot points polygon segments par
 #' @author Soren Jordan and Andrew Q. Philips
 #' @keywords utilities
@@ -3813,19 +3931,28 @@ dynardl.simulation.plot <- function(x, type = "area", response = "levels", bw = 
 #' dynardl.all.plots(ardl.model, bw = TRUE)	 
 #' @export
 
-dynardl.all.plots <- function(x, type = "area", bw = FALSE, last.period = NULL,  start.period = 1, tol = (abs(x$model$ymean) * 0.01), ...) {
+dynardl.all.plots <- function(x, type = "area", bw = FALSE, last.period = NULL, start.period = 1, tol = (abs(x$model$ymean) * 0.01), abs.errors = "none", ylim = NULL, xlab = NULL, ylab = NULL, ...) {
+	if(!(identical(class(x), "dynardl"))) { # Check if data are from dynardl
+		stop("To plot simulation, provide a dynardl model object (with a simulation).")
+	}
+	if(x$model$simulate == FALSE) {
+		stop("dynardl object does not include simulation to plot.")
+	}
+	if(identical(x$rawsims, NULL)) {
+		stop("dynardl object must have fullsims = TRUE to track cumulative absolute differences.")
+	}
 	par(mfrow = c(2, 3))
-	dynardl.simulation.plot(x, response = "levels", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ...)
-	dynardl.simulation.plot(x, response = "levels.from.mean", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ...)
-	dynardl.simulation.plot(x, response = "diffs", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ...)
-	dynardl.simulation.plot(x, response = "shock.effect.decay", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ...)
-	dynardl.simulation.plot(x, response = "cumulative.diffs", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ...)
-	dynardl.simulation.plot(x, response = "cumulative.abs.diffs", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ...)
+	dynardl.simulation.plot(x, response = "levels", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ylim = ylim, ylab = ylab, xlab = xlab, ...)
+	dynardl.simulation.plot(x, response = "levels.from.mean", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ylim = ylim, ylab = ylab, xlab = xlab,  ...)
+	dynardl.simulation.plot(x, response = "diffs", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ylim = ylim, ylab = ylab, xlab = xlab, ...)
+	dynardl.simulation.plot(x, response = "shock.effect.decay", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ylim = ylim, ylab = ylab, xlab = xlab, ...)
+	dynardl.simulation.plot(x, response = "cumulative.diffs", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, ylim = ylim, ylab = ylab, xlab = xlab, ...)
+	dynardl.simulation.plot(x, response = "cumulative.abs.diffs", type = type, bw = bw, tol = tol, last.period = last.period, start.period = start.period, abs.errors = abs.errors, ylim = ylim, ylab = ylab, xlab = xlab, ...)
 }
 
 
 ###################################
-# ---(12) dynardl.totaleffect ----#
+# ---(12) dynardl.totaleffect ----#		# HAS NOT BEEN FIXED FOR NEW CHANGE TO CUM. ABS.DIFFS; no warning for LDV, etc. etc. 
 ###################################
 dynardl.totaleffect <- function(x, last.period = NULL, tol = (abs(x$model$ymean) * 0.001), round.to = 3, object.out = FALSE) {
 	if(x$model$simulate == FALSE) {

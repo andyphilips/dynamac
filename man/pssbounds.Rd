@@ -2,31 +2,34 @@
 % Please edit documentation in R/dynamac.R
 \name{pssbounds}
 \alias{pssbounds}
-\title{Perform Pesaran, Shin and Smith (2001) cointegration test}
+\title{Perform Pesaran, Shin, and Smith (2001) cointegration test}
 \usage{
 pssbounds(data = list(), obs = NULL, fstat = NULL, tstat = NULL,
-  case = NULL, k = NULL, digits = 3, object.out = FALSE)
+  case = NULL, k = NULL, restriction = FALSE, digits = 3,
+  object.out = FALSE)
 }
 \arguments{
-\item{data}{an optional \code{\link{dynardl}} model. This option is highly recommended. Users are welcome to supply their own case, t-statistic, F-statistic, and observations, but it is easier to have the model determine these quantities}
+\item{data}{an optional \code{\link{dynardl}} model. This option is highly recommended. Users are welcome to supply their own case, k regressors, t-statistic, F-statistic, and observations, but it is easier to have the model determine these quantities. If a \code{\link{dynardl}} model is supplied, user-supplied arguments are ignored}
 
 \item{obs}{number of observations}
 
-\item{fstat}{F-statistic of the joint test that variables in levels are equal to zero: the specific restriction tested 
-is \code{l.y + l.x1 + l.x2 + ... + l.xk = 0}}
+\item{fstat}{F-statistic of the joint test that variables in first lags are equal to zero: the specific restriction tested 
+is \code{l.y + l.1.x1 + l.1.x2 + ... + l.1.xk = 0}, except in cases II and IV (see \code{restriction} and \code{case})}
 
 \item{tstat}{t-statistic of the lagged dependent variable}
 
-\item{case}{specify certain restrictions on the constant and trend terms, since critical values differ by case. Case I: no intercept or trend, Case II: restricted intercept, no trend, Case III: unrestricted intercept with no trend, Case IV: unrestricted intercept and restricted trend, Case V: unrestricted intercept and trend. Case III is most frequently specified}
+\item{case}{The case of the test, as per Pesaran, Shin, and Smith (2001). Case I: no intercept or trend; case II: restricted intercept, no trend; case III: unrestricted intercept with no trend; case IV: unrestricted intercept and restricted trend; case V: unrestricted intercept and trend. Case III is most frequently specified}
 
 \item{k}{number of regressors appearing in levels in the estimated model, not including the lagged dependent variable}
+
+\item{restriction}{if you design to test case II or IV of pssbounds, where it is assumed that the constant (case 2) or trend (case 4) are restricted in the resulting F-test, indicate that restriction = \code{TRUE}. If restriction = \code{TRUE} and there is no trend in the regression (trend = \code{FALSE} in \code{\link{dynardl}}), the F-test will include the constant in addition to the lagged dependent variable and lagged regressors in order to test for cointegration under the assumption of a restricted constant (see Pesaran, Shin and Smith [2001], case II). If restriction = \code{TRUE} and there is a trend in the regression (trend = \code{TRUE} in \code{\link{dynardl}}), the F-test will include the trend term in addition to the lagged dependent variable and lagged regressors in order to test for cointegration under the assumption of a restricted trend (see Pesaran, Shin and Smith [2001], case IV). If you are estimating the regular unrestricted ECM (this is more common), restriction = \code{FALSE}. The default is \code{FALSE}}
 
 \item{digits}{the number of digits to round to when showing output. The default is \code{3}}
 
 \item{object.out}{if \code{TRUE}, and \code{pssbounds} is assigned to an object, the test quantities will be stored for the user's convenience}
 }
 \description{
-Perform Pesaran, Shin and Smith (2001) cointegration test
+Perform Pesaran, Shin, and Smith (2001) cointegration test
 }
 \details{
 pssbounds performs post-estimation cointegration testing using the bounds testing procedure from Pesaran, Shin, and Smith (2001). Since test statistics vary based on the number of \code{k} regressors, length of the series, these are required, in addition to F- and t-statistics

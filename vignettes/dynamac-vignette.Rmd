@@ -27,12 +27,12 @@ We illustrate the usefulness of these functions through example. After a brief d
 
 ## ARDL models generally
 
-The ARDL model has a general form where $y$, modeled in levels or differences, can depend on itself (in lagged levels or differences), up to $k$ variables $x$, either in contemporaneous (same period, or appearing at time $t$) levels, lagged levels, contemporaneous differences, or lagged differences. Conventionally, the number of lags of the dependent variable in levels is counted by $p$, the number of lags of the dependent variable in differences is counted by $m$, the number of lags of the independent variables in levels is counted by $l$, and the number of lags of the independent variables in differences is counted by $q$ (note: $l$ and $q$ can begin at 0, i.e, contemporaneous effects appearing at time $t$). 
+The ARDL model has a general form where $y$, modeled in levels or differences, is a function of itself (in lagged levels or differences), up to $k$ variables $x$, either in contemporaneous (same period, or appearing at time $t$) levels, lagged levels, contemporaneous differences, or lagged differences. Conventionally, the number of lags of the dependent variable in levels is counted by $p$, the number of lags of the dependent variable in differences is counted by $m$, the number of lags of the independent variables in levels is counted by $l$, and the number of lags of the independent variables in differences is counted by $q$ (note: $l$ and $q$ can begin at 0, i.e, contemporaneous effects appearing at time $t$). 
 
-The number of time periods of each variable can, theoretically, be quite large. Or, put differently, $p$, $m$, $l$, and $q$, especially $l$ and $q$, might be hard to account for. Analysts without strong theory about the period of the effects often begin with a reasonable one-period restriction, or an ARDL model of the nature 
+The number of time periods of each variable can, theoretically, be quite large. Or, put differently, $p$, $m$, $l$, and $q$, especially $l$ and $q$, might be hard to account for. Analysts without strong theory about the nature of the effects often begin with restricting all but the contemporaneous and first lag of each series, or an ARDL model of the nature 
 
 $$y_t =  \alpha_0 + \phi_1 y_{t-1} + \theta_{1,0} x_{1,t} + \theta_{1,1} x_{1,t-1} + \cdots + \theta_{k,0}x_{k,t} + \theta_{k,1}x_{k,t-1}+ \beta *T  + \epsilon_t$$
-where $\alpha_0$ is a constant and $\beta$ is a trend term. (The exact nature of this equation depends on whether $y$ is stationary or integrated, as well as if differences or lagged differences are entered into the model. But we will get to this below.)
+where $\alpha_0$ is a constant and $\beta *T$ is a trend term. (The exact nature of this equation depends on whether $y$ is stationary or integrated, as well as if differences or lagged differences are entered into the model. But we will get to this below.)
 
 It's useful at this point to stop and think: if I have multiple lags of a variable $x$, and they are filtered through a lagged dependent variable $y_{t-1}$, it might be difficult to get a sense of the "total" effect of $x$ on $y$. This becomes more and more difficult as $x$ increases in lagged levels $l$ *and potentially also* lagged differences $q$. Our coefficient estimates, while estimated, are no longer as useful in direct interpretation. Put differently, the very flexibility of the ARDL model also undoes its usefulness in interpretation! So we might seek an alternative way of interpreting these models. dynamac provides a unified way of estimating ARDL models and interpreting their effects. It also provides a way of implementing a popular test for cointegration. We uncover these methods below. 
 
@@ -84,7 +84,7 @@ Each of the above tests, when run, indicated that the differenced series of `con
 
 ### Estimating ARDL models with `dynardl` 
 
-ARDL models are flexible, but their flexibility often results in variables of different lengths due to differencing and lagging. For instance, consider our simple model from above where `incshare10` appears as a first lag and a first difference, `urate` appears as a first difference, there is a lagged dependent variable, and `concern` is the dependent variable in differences. We can introduce a lag through the build in `lshift` function in dynamac. The syntax is just `lshift(variable, num.lags)`, where `num.lags` is the number of periods for the variable to be lagged. We can also difference a series through `dshift`. The syntax is just `dshift(variable)` for a first difference. For instance, 
+ARDL models are flexible, but their flexibility often results in variables of different lengths due to differencing and lagging. For instance, consider our simple model from above where `incshare10` appears as a first lag and a first difference, `urate` appears as a first difference, there is a lagged dependent variable, and `concern` is the dependent variable in differences. We can introduce a lag through the built-in `lshift` function in dynamac. The syntax is just `lshift(variable, num.lags)`, where `num.lags` is the number of periods for the variable to be lagged. We can also difference a series through `dshift`. The syntax is just `dshift(variable)` for a first difference. For instance, 
 
 ```{r}
 head(ineq$incshare10)
@@ -121,13 +121,13 @@ If the variable can appear in multiple periods (`lags` and `lagdiffs`), it must 
 
 The option `ec` specifies the nature of the dependent variable. If it is possibly error-correcting (`ec = TRUE`), it is run in differences, or period-over-period changes. If it is not (`ec = FALSE`), the dependent variable is run in levels.
 
-At this point, `dynardl` is just a unifying way of thinking about time series models for estimation. Yet it is going to offer two other important advantages: interpreting the effects of our variables, and executing a powerful test for cointegration. We will start with the latter. Remember testing for I(1) processes earlier: each test indicated that `concern` was I(1). Running the same tests for each of `incshare10` and `urate` suggests that all three series are I(1). This might cause us concern about cointegration: the special relationship between I(1) series where the series are in a long-run relationship, even if they move apart in the short term. There is nothing wrong with cointegrating series; they are just more difficult to estimate. More importantly, they are difficult to *uncover*. Traditional methods, like the Engle and Granger [-@engle1987co] two-step method or likelihood-based approaches [@johansen1995likelihood] too often conclude cointegration when it does not exist. An alternative test [@pesaran2001bounds], which we refer to as the ARDL-bounds procedure, performs much better in small samples ($t < 80$), but it is more cumbersome to implement. The package dynamac is meant to resolve that deficiency by implementing critical value testing procedure for the user. Following Philips [-@philips2016have], it requires estimating the relationship in error-correction form, obtaining statistics of interest, and then testing them via the function `pssbounds`. 
+At this point, `dynardl` is just a unifying way of thinking about time series models for estimation. Yet it is going to offer two other important advantages: interpreting the effects of our variables, and executing a powerful test for cointegration. We will start with the latter. Remember testing for I(1) processes earlier: each test indicated that `concern` was I(1). Running the same tests for each of `incshare10` and `urate` suggests that all three series are I(1). This might cause us concern about cointegration: the special relationship between I(1) series where the series are in a long-run relationship, even if they move apart in the short term.  Cointegrating series are difficult to *uncover*. Traditional methods, like the Engle and Granger [-@engle1987co] two-step method or likelihood-based approaches [@johansen1995likelihood] too often conclude cointegration when it does not exist, at least in smaller sample sizes [@philips2016have]. An alternative test [@pesaran2001bounds], which we refer to as the ARDL-bounds procedure, performs much better in small samples ($t < 80$), but it is more cumbersome to implement. The package dynamac is meant to resolve that deficiency by implementing critical value testing procedure for the user. Following Philips [-@philips2016have], it requires estimating the relationship in error-correction form, obtaining statistics of interest, and then testing them via the function `pssbounds`. 
 
 ### Cointegration testing using the ARDL-bounds procedure and `pssbounds`
 
 The ARDL-bounds procedure begins with two preliminaries. First, we must ensure that the regressors are not of order I(2) or more and that any seasonal components have been removed. We demonstrated this above when we found that the first-difference of `incshare10` and `urate` were both stationary. In addition, there were no seasonal components, looking at the series (although more formal diagnostics are probably warranted). Second, we must ensure that the dependent variable *is* integrated of order I(1). And again, above, we demonstrated that `incshare10` is integrated.
 
-The next step in ARDL-bounds is to estimate the error-correction form of the model. Two points are key: the independent variables that are potentially I(1) must be entered in levels, and the resulting residuals of the error-correction ARDL model must be white noise (random with no residual autocorrelation). Here, that means that we run our dependent variable in differences, we include the lagged levels of the dependent variable, we include the levels of the potentially error-correcting variable, `incshare10`, and the short-run effects of `urate` through differences. Returning to our model above, and using `dynardl`, this is now straightforward: 
+The next step in ARDL-bounds is to estimate the error-correction form of the model. Two points are key: the independent variables that are potentially I(1) must be entered in levels, and the resulting residuals of the error-correction ARDL model must be white noise (random with no residual autocorrelation). Here, that means that we run our dependent variable in differences, we include the lagged levels of the dependent variable, we include the levels of the potentially cointegrating variable, `incshare10`, and the short-run effects of `urate` through differences. Returning to our model above, and using `dynardl`, this is now straightforward: 
 
 ```{r}
 res1 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
@@ -161,41 +161,53 @@ dynardl.auto.correlated(res2)
 length(res2$model$residuals)
 ```
 
-We can now be much more confident that there is no more autocorrelation in the residuals. At this point, we can execute the ARDL-bounds test procedure. We need a few pieces of information: the length of the time series, the $t$-statistic on the lagged dependent variable in the ARDL error-correction model, the "case" of the regression (a combination of whether the intercept, if any, and trend, if any, were restricted [@pesaran2001bounds]), and the number of regressors $k$ appearing in first lags (NOT including the lagged dependent variable). We also need the number of observations in the model time series and the $F$-statistic on the restriction that the first lags of each of the variables in the model are jointly equal to zero.
+We can now be much more confident that there is no more autocorrelation in the residuals. At this point, we can execute the ARDL-bounds test procedure. We need a few pieces of information: the length of the time series, the $t$-statistic on the lagged dependent variable in the ARDL error-correction model, the "case" of the regression (a combination of whether the intercept, if any, and trend, if any, were restricted [@pesaran2001bounds]), and the number of regressors $k$ appearing in first lags (NOT including the lagged dependent variable). We also need the number of observations in the model time series and the $F$-statistic on the restriction that the first lags of each of the variables in the model (including the lagged dependent variable) are jointly equal to zero.
 
-From our regression, we know the $t$-statistic on the lagged dependent variable is -3.684 (just looking at the output). Additionally, we estimated a model with an unrestricted intercept and no trend, which happens to be case 3 (which we might not know without referencing [@pesaran2001bounds]). There are $k = 1$ variables in first lags (`incshare10`), and the number of `obs` in the model is 47 periods. We now only need the test of the restriction that the first lags are equal to zero. We can calculate this by hand through coefficient testing. If we have all of the coefficients, we just need to compare them to the set that are lagged levels:
+From our regression, we know the $t$-statistic on the lagged dependent variable is -3.684 (just looking at the output). Additionally, we estimated a model with an unrestricted intercept and no trend, which happens to be case 3 (which we would know by referencing Pesaran, Shin, and Smith [-@pesaran2001bounds]). There are $k = 1$ variables in first lags (`incshare10`, not including the LDV), and the number of `obs` in the model is 47 periods. We now only need the test of the restriction that the first lags are equal to zero. We can calculate this by hand through coefficient testing. If we have all of the coefficients, we just need to compare them to the set that are lagged levels:
 
 ```{r}
 coef(res2$model)
-# Only the last coefficient is a first lagged level
+# The second coefficient is the LDV, and the last coefficient is also a first lag. So they're both restricted
+
 B <- coef(res2$model)
 V <- vcov(res2$model)
-R <- matrix(c(0, 0, 0, 0, 0, 1), nrow = 1)
-k <- sum(R)
+
+# tag restrictions on LDV and l.1.incshare10
+R <- matrix(c(0, 1, 0, 0, 0, 0, 
+			  0, 0, 0, 0, 0, 1), byrow = T, nrow = 2)
+k.plus1 <- sum(R)
 
 # Restriction is that it is equal to 0
 q <- 0
-fstat <- (1/k)*t(R%*%B-q)%*%solve(R%*%V%*%t(R))%*%(R%*%B-q)	
+fstat <- (1/k.plus1)*t(R%*%B-q)%*%solve(R%*%V%*%t(R))%*%(R%*%B-q)	
 fstat
 ```
 
-Now we're ready for `pssbounds`
+To test for cointegration, we need special critical values for the F-test statistic. For this, we're ready for `pssbounds`
 
 ```{r}
-pssbounds(obs = 47, fstat = 6.837322, tstat = -3.684, case = 3, k = 1)
+pssbounds(obs = 47, fstat = 12.20351, tstat = -3.684, case = 3, k = 1)
 ```
 
-Finally, a payoff. The $t$-statistic and $F$-statistic are situated between special sample critical values. Depending on the level of significance that we preselected, these values offer a number of different conclusions. If the $F$-statistic exceeds the upper I(1) critical value, we may conclude cointegration. Thus, we can be confident that we have a well-specified model. If the F-statistic falls below the I(0) critical value, Pesaran, Shin and Smith note that this indicates that all regressors are in fact stationary. Thus, cointegration cannot exist. If the F-statistic falls between the lower I(0) and upper I(1) critical values, the results are inconclusive. This means that cointegration may exist, but further testing and re-specification of the model is needed. Users that end up with these results are encouraged to see Philips (2018), who provides a strategy for dealing with this.
+Finally, a payoff. The $t$-statistic and $F$-statistic are situated between special sample critical values. Depending on the level of significance that we preselected, these values offer a number of different conclusions. If the $F$-statistic exceeds the upper I(1) critical value, we may conclude cointegration. Thus, we can be confident that we have a well-specified model. If the F-statistic falls below the I(0) critical value, Pesaran, Shin, and Smith [-@pesaran2001bounds] note that this indicates that all regressors are in fact stationary. Thus, cointegration cannot exist. If the F-statistic falls between the lower I(0) and upper I(1) critical values, the results are inconclusive. This means that cointegration may exist, but further testing and re-specification of the model is needed. Users that end up with these results are encouraged to see Philips [-@philips2016have], who provides a strategy for dealing with this.
 
 In our model here, since the value of the $F$-statistic exceeds the critical value at the upper I(1) bound of the test at the 5% level, we may conclude that Income Top 10 (the variable in the model in levels) and the dependent variable, Concern, are in a cointegrating relationship. This is furthered by the $t$-statistic of -3.684 falling below the 5% critical value for I(1). Thus, we can be confident both in our model specification and the unique, long-run relationship that exists between the two variables.
 
-Calculating all of those values by hand was unnecessarily involved, especially since we know most of the values are saved post-estimation anyway. We're further motivated not to have to reference [@pesaran2001bounds] for the case of the regression every time we run `pssbounds`. Thus, our preferred way of estimating the ARDL-bounds test is just by passing the error-correction model to `pssbounds`. In other words, the test is equivalent by just running
+Calculating all of those values by hand was unnecessarily involved, especially since we know most of the values are saved post-estimation anyway. We're further motivated not to have to reference the tables in Pesaran, Shin, and Smith [-@pesaran2001bounds] for the case of the regression every time we run `pssbounds`. Thus, our preferred way of estimating the ARDL-bounds test is just by passing the error-correction model to `pssbounds`. In other words, the test is equivalent by just running
 
 ```{r}
 pssbounds(res2)
 ```
 
-Any `dynardl` object run in an error-correction format is available for `pssbounds` post-estimation. This, of course, is not meant to imply that all `dynardl` models are meant to be tested for cointegration. Stationary variables cannot be cointegrated with other variables. As such, we would want to run those models in levels, with `EC = FALSE`. Like always, we point users to the importance of pre-regression testing of the nature of our variables, most specifically whether or not they are integrated. `dynardl` will attempt to be as helpful as possible, but in the end, it is up to the user to know which model is appropriate and to ensure that the model is specified correctly.
+Pesaran, Shin, and Smith [-@pesaran2001bounds] also provide for testing that the intercept is also restricted, which they refer to as case 2. If we wanted to add this restriction to the test, we would use `restriction = TRUE` in `pssbounds`.
+
+```{r}
+pssbounds(res2, restriction = TRUE)
+```
+
+Of course, users are encouraged to read Pesaran, Shin, and Smith [-@pesaran2001bounds] and Philips [-@philips2016have] for the implications of this test. We merely note that cases 2 and 4 accessible through `restriction = TRUE`. We also note that, for most users most of the time, case 3 will be the most common case (an unrestricted intercept and no trend).
+
+Any `dynardl` object run in an error-correction format is available for `pssbounds` post-estimation. This, of course, is not meant to imply that all `dynardl` models are meant to be tested for cointegration. Stationary dependent variables cannot be cointegrated with other variables. As such, we would want to run those models in levels, with `EC = FALSE`. Like always, we point users to the importance of pre-regression testing of the nature of our variables, most specifically whether or not they are integrated. `dynardl` will attempt to be as helpful as possible, but in the end, it is up to the user to know which model is appropriate and to ensure that the model is specified correctly.
 
 We had another motivation. `dynardl` + `pssbounds` are a powerful combination for estimating and testing for cointegration in a unified framework. But once we have tested for cointegration, we still want inferences about the nature of the effect of some $x$ variable on the dependent variable. And these inferences become much more difficult to obtain as our models increase in complexity. For instance, the very lagged difference of $y$ that we introduced to help purge autocorrelation from the model we just estimated made interpreting the coefficients from that model much less straightforward. In the next section, we elaborate on the ability of `dynardl` to provide these inferences through the process we outlined earlier: counterfactual simulation of a response to a shock in some $x$ variable. These inferences do not require anything beyond what we have already covered: a `dynardl` model and a theoretically interesting $x$ variable.
 
@@ -285,7 +297,7 @@ dynardl.simulation.plot(res4, type = "spike", response = "levels", bw = TRUE)
 
 The full extent of these options is addressed in the documentation.
 
-There is some question as to whether or not quantities of interest from these types of stochastic simulations are best summarized by the means or the medians of the resulting distributions. In most cases, the difference is likely to be minimal. In cases of skew, though, the median might serve significantly better than the mean (described in [-@raineytransform]). Here, we can do that by setting `qoi = median`. 
+There is some question as to whether or not quantities of interest from these types of stochastic simulations are best summarized by the means or the medians of the resulting distributions. In most cases, the difference is likely to be minimal. In cases of skew, though, the median might serve significantly better than the mean (described in Rainey [-@raineytransform]). Here, we can do that by setting `qoi = median`. 
 
 ```{r}
 set.seed(020990)

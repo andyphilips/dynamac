@@ -1,0 +1,119 @@
+# Last updated: 3/29/2020#
+# Load dependencies#
+library(MASS)#
+library(lmtest)
+# load("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynamac/data/ineq.rda")
+# source("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynardl.R")
+set.seed(1)#
+x.error <- rnorm(500, 0, 2)#
+x.full <- x.error#
+y.error <- rnorm(500, 0, 2)#
+y.full <- y.error#
+y.diff.full <- rep(NA, length(y.full))#
+phi <- -0.8 # coef on ldv#
+beta.lx <- 1 # coef on l.x#
+beta.diff.x <- -2 # coef on x#
+for(i in 2:length(x.full)) {#
+	x.full[i] <- x.full[i - 1] + x.error[i]#
+	y.diff.full[i] <- phi*y.full[i - 1] + beta.diff.x*(x.full[i] - x.full[i - 1]) + beta.lx*x.full[i - 1] + y.error[i] # rnorm(1, 0, 1) + const*rnorm(1, 1, 0.25) +#
+	y.full[i] <- y.full[i - 1] + y.diff.full[i]#
+}#
+#
+# Trim the burn in#
+x <- x.full[101:500]#
+y.diff <- y.diff.full[101:500]#
+y <- y.full[101:500]
+set.seed(1)#
+model.ec <- dynardl(y.full ~ x.full, lags = list("x.full" = c(1)), diffs = c("x.full"), #
+	simulate = FALSE, fullsims = TRUE, #
+	shockvar = "x",#
+	sims = 10000, range = 20,#
+	ec = TRUE)
+source("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynardl.R")
+set.seed(1)#
+model.ec <- dynardl(y.full ~ x.full, lags = list("x.full" = c(1)), diffs = c("x.full"), #
+	simulate = FALSE, fullsims = TRUE, #
+	shockvar = "x",#
+	sims = 10000, range = 20,#
+	ec = TRUE)
+model.ec$pssbounds
+meow <- pssbounds(model.ec)
+names(meow)
+meow
+meow <- pssbounds(model.ec, object.out = TRUE)
+names(meow)
+load("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynamac/data/ineq.rda")
+source("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynardl.R")
+library(MASS)#
+library(lmtest)
+dyn.out.7.1 <- dynardl(concern ~ incshare10 + urate, data = ineq, #
+    lags = list("concern" = 1, "incshare10" = 1, "urate" = 1), ec = TRUE,#
+    constant = FALSE, trend = FALSE, simulate = FALSE) # case 1#
+  pss.7.1 <- pssbounds(dyn.out.7.1, object.out = TRUE)
+expect_equal(coef(summary(dyn.out.7.1))["l.1.concern", 3], pss.7$tstat)
+library(testthat)
+expect_equal(coef(summary(dyn.out.7.1))["l.1.concern", 3], pss.7$tstat)
+expect_equal(coef(summary(dyn.out.7.1))["l.1.concern", 3], pss.7.1$tstat)
+coef(summary(dyn.out.7.1))["l.1.concern", 3]
+pss.7.1$tstat
+y <- rnorm(500)#
+  x <- rnorm(500)#
+  model <- dynardl(y ~ x, lags = list("y" = 1, "x" = 1), ec = TRUE)
+expect_identical(summary(model), summary(model$model))
+summary(lm(dshift(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1)))
+summary(lm(dshift(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1)))$fstatistic[1]
+round(summary(lm(dshift(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1)))$fstatistic[1], 3)
+round(pss.7.3$fstat, 3)
+dyn.out.7.3 <- dynardl(concern ~ incshare10, data = ineq, #
+    lags = list("concern" = 1, "incshare10" = 1), ec = TRUE,#
+    constant = TRUE, trend = FALSE, simulate = FALSE) # case 3#
+  pss.7.3 <- pssbounds(dyn.out.7.3, object.out = TRUE)
+round(pss.7.3$fstat, 3)
+expect_equal(round(summary(lm(dshift(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1)))$fstatistic[1], 3), #
+  		round(pss.7.3$fstat, 3))
+round(summary(lm(dshift(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1)))$fstatistic[1], 3)
+round(pss.7.3$fstat, 3)
+unname(round(summary(lm(dshift(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1)))$fstatistic[1], 3))
+expect_equal(unname(round(summary(lm(dshift(ineq$concern) ~ lshift(ineq$concern, 1) + lshift(ineq$incshare10, 1)))$fstatistic[1], 3)), #
+  		round(pss.7.3$fstat, 3))
+format(3.097, digits = 3, nsmall = 2)
+x <- list()
+is.list(x)
+c <- c()
+is.list(c)
+length(c)
+if(length(c))
+)
+if(length(c)))
+if(length(c)) {print(meow)}
+meow <- 2
+c <- c(1)
+if(length(c)) {print(meow)}
+library(MASS)#
+library(lmtest)
+remove.packages("dynamac")
+library(dynamac) # should issue error
+install.packages("/Users/scj0014/Myfiles/Dropbox/Dynpss project/R/dynamac_0.1.11.tar.gz", repos = NULL, type = "source")
+library(dynamac)
+dynardl(concern ~ incshare10 + urate, data = ineq, #
+    lags = list("incshare10" = 1, "urate" = 1), ec = TRUE,#
+    simulate = FALSE, shockvar = c("incshare10", "urate"))
+remove.packages("dynamac")
+library(dynamac) # should issue error
+rm(ls = list())
+rm(list = ls())
+library(MASS)#
+library(lmtest)
+load("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynamac/data/ineq.rda")
+source("/Users/scj0014/Myfiles/Dropbox/Dynpss Project/R/dynardl.R")
+dynardl(concern ~ incshare10 + urate, data = ineq, #
+    lags = list("incshare10" = 1, "urate" = 1), ec = TRUE,#
+    simulate = FALSE, shockvar = c("incshare10", "urate"))
+library(testthat)
+expect_error(dynardl(concern ~ incshare10 + urate, data = ineq, #
+    lags = list("incshare10" = 1, "urate" = 1), ec = TRUE,#
+    simulate = FALSE, shockvar = c("incshare10", "urate")), #
+    	"specified more than one shockvar") # warning: more than one shockvar, but not simulating
+dynardl(concern ~ incshare10 + urate, data = ineq, #
+    lags = list("incshare10" = 1, "urate" = 1), ec = TRUE,#
+    simulate = FALSE, shockvar = c("incshare10", "urate"))

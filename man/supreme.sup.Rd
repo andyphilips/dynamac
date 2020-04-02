@@ -23,9 +23,6 @@
 data(supreme.sup)
 }
 \description{
-A dataset from: Durr, Robert H., Andrew D. Martin, and Christina
-Wolbrecht. 2000. "Ideological divergence and public support for
-the Supreme Court." American Journal of Policial Science 44(4):
-768-776.
+A dataset from: Durr, Robert H., Andrew D. Martin, and Christina Wolbrecht. 2000. "Ideological divergence and public support for the Supreme Court." American Journal of Policial Science 44(4): 768-776.
 }
 \keyword{datasets}

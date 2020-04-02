@@ -18,8 +18,7 @@ A summary of the fitted ARDL model.
 Enable summary calls to \code{\link{dynardl}} model objects
 }
 \details{
-\code{dynardl}, by default, stores regression results in \code{foo$model}. This calls those results 
-directly with \code{summary}
+\code{dynardl}, by default, stores regression results in \code{foo$model}. This calls those results directly with \code{summary}
 }
 \examples{
 # Using the ineq data from dynamac
