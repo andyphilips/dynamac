@@ -38,7 +38,7 @@ environment:
     RTOOLS_VERSION: 35
     CRAN: http://cran.rstudio.com
 
-  - R_VERSION: 3.5.0
+  - R_VERSION: 4.0.0
     RTOOLS_VERSION: 35
     CRAN: http://cran.rstudio.com
 
