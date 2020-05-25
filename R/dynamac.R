@@ -318,14 +318,14 @@ ldshift <- function(x, l){
 #' summary(ardl.model.2)
 #'
 #' # Does not work: levels and diffs must appear as a vector
-#' \donttest{
-#' ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
-#'        lags = list("concern" = 1, "incshare10" = 1),
-#'        levels = list("urate" = 1),
-#'        diffs = list("incshare10" = 1, "urate" = 1), 
-#'        lagdiffs = list("concern" = 1),
-#'        ec = TRUE, simulate = FALSE)
-#' }
+#' 
+#' # ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
+#' #      lags = list("concern" = 1, "incshare10" = 1),
+#' #      levels = list("urate" = 1),
+#' #      diffs = list("incshare10" = 1, "urate" = 1), 
+#' #      lagdiffs = list("concern" = 1),
+#' #      ec = TRUE, simulate = FALSE)
+#' 
 #'
 #' ardl.model.3 <- dynardl(concern ~ incshare10 + urate, data = ineq, 
 #'        lags = list("concern" = 1, "incshare10" = 1),
