@@ -22,7 +22,7 @@ library(dynamac)
 You should now be able to use the package.
 
 ## Installation (Stata)
-To install `dynamac` in Stata type one of the following into the console:
+To install `dynamac` in Stata type one of the following into the console (note that using `net install` calls directly from Github and will ensure the most up-to-date version):
 ```
 net sj 18-4 st0545
 ```
