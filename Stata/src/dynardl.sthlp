@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.0.5  01may2018}{...}
+{* *! version 1.0.6  13sep2020}{...}
 {findalias asfradohelp}{...}
 {vieweralsosee "" "--"}{...}
 {vieweralsosee "[R] help" "help help"}{...}
@@ -23,7 +23,7 @@
 {p 8 17 2}
 {cmdab:dynardl} 
 {depvar}
-{indepvars}{cmd:,} {cmdab:l:ags(numlist)} {cmdab:shockvar(varname)} {cmdab:shockval(#)} [{it:options}]
+{indepvars}{cmd: [if] [in],} {cmdab:l:ags(numlist)} {cmdab:shockvar(varname)} {cmdab:shockval(#)} [{it:options}]
 
 {synoptset 20 tabbed}{...}
 {synopthdr}
@@ -203,5 +203,5 @@ and:
 {marker version}{...}
 {title:Version}
 
-version 1.0.5, Nov 15, 2019.
+version 1.0.6, Sept 13, 2020.
 

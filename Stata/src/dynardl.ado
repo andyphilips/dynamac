@@ -1,8 +1,8 @@
 *
 *		PROGRAM DYNARDL
 *		
-*		version 1.0.5
-*		4/18/18
+*		version 1.0.6
+*		9/13/20
 *		Soren Jordan and Andrew Q. Philips
 *		
 *
@@ -22,6 +22,8 @@ burnin(numlist integer > 1) sims(numlist) graph rarea change expectedval]
 
 version 8
 preserve								// we're going to remove existing data
+
+marksample touse 
 
 di "-----------------------------------------------"
 if "`sig'" != ""	{						// getting the CI's signif
@@ -328,11 +330,11 @@ if "`noconstant'" != "" {					// suppress constant?
 * ----------------- Estimate Model ----------------------------- *
 * ARDL:
 if "`ec'" == ""	{
-	regress `varname_1' `ldvs' `lddvs' `dsiv' `lsiv' `ldsiv' `siv' `ivset' `divset' `livset' `ldivset' `trend' `nocon'
+	regress `varname_1' `ldvs' `lddvs' `dsiv' `lsiv' `ldsiv' `siv' `ivset' `divset' `livset' `ldivset' `trend' `nocon' if `touse'
 }
 * ECM:
 else	{
-	regress d`varname_1' `ldvs' `lddvs' `dsiv' `lsiv' `ldsiv' `siv' `ivset' `divset' `livset' `ldivset' `trend' `nocon'
+	regress d`varname_1' `ldvs' `lddvs' `dsiv' `lsiv' `ldsiv' `siv' `ivset' `divset' `livset' `ldivset' `trend' `nocon' if `touse'
 }
 
 * ----------------- Store Values for pssbounds ----------------- *

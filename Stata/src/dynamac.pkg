@@ -1,4 +1,4 @@
-v 1.0.5
+v 1.0.6
 
 d Andrew Q. Philips and Soren Jordan
 d
@@ -9,7 +9,7 @@ d
 d
 d Requires: Stata version 8 or newer
 d
-d Distribution-Date: 11-15-2019
+d Distribution-Date: 09-13-2020
 d
 
 f dynardl.ado
