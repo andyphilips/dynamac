@@ -1,6 +1,92 @@
 # Series simulator to make pretty pictures from dynardl
 library(dynamac)
 
+set.seed(1)
+x.error <- rnorm(500, 0, 0.5)
+x.full <- x.error
+y.error <- rnorm(500, 0, 2)
+y.full <- y.error
+y.diff.full <- rep(NA, length(y.full))
+phi <- -0.8 # coef on ldv
+beta.lx <- 1 # coef on l.x
+beta.diff.x <- -2 # coef on x
+
+
+for(i in 2:length(x.full)) {
+	x.full[i] <- x.full[i - 1] + x.error[i]
+	y.diff.full[i] <- phi*y.full[i - 1] + beta.diff.x*(x.full[i] - x.full[i - 1]) + beta.lx*x.full[i - 1] + y.error[i] # rnorm(1, 0, 1) + const*rnorm(1, 1, 0.25) +
+	y.full[i] <- y.full[i - 1] + y.diff.full[i]
+}
+
+# Trim the burn in
+x <- x.full[101:500]
+y.diff <- y.diff.full[101:500]
+y <- y.full[101:500]
+
+set.seed(1)
+model.ec <- dynardl(y ~ x, lags = list("x" = c(1)), diffs = c("x"), 
+	simulate = TRUE, fullsims = TRUE, 
+	shockvar = "x",
+	sims = 10000, range = 20,
+	ec = TRUE)
+	
+summary(model.ec)
+
+# This is NEW Figure 1.
+dynardl.all.plots(model.ec, bw = TRUE, tol = 0.05)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 beta.x <- 2 # coef on x
 beta.lx <- -3 # coef on l.x
 phi <- 0.5 # coef on ldv
@@ -36,6 +122,15 @@ model <- dynardl(y ~ x, lags = list("x" = c(1)), levels = c("x"),
 	ec = FALSE)
 	
 summary(model)
+
+# This is Figure 1.
+dynardl.all.plots(model, bw = TRUE, tol = 0.05)
+
+
+
+
+
+
 
 
 
@@ -86,12 +181,69 @@ model.ec <- dynardl(y ~ x, lags = list("x" = c(1)), diffs = c("x"),
 	
 summary(model.ec)
 
+
+
+# This is Figure 1.
 dynardl.all.plots(model.ec, bw = TRUE, tol = 0.05)
 dev.off()
 
 beta.lx/(-1 * phi)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# OLD plots.
 
 
 ### Pairing the types together (of the six) for the levels/ec models (png)
@@ -126,25 +278,6 @@ par(mfrow = c(1, 2), mar = c(4.1, 4.1, 1.1, 1.1))
 dynardl.simulation.plot(model, bw = TRUE, response = "shock.effect.decay", main = "Y in Levels")
 dynardl.simulation.plot(model.ec, bw = TRUE, response = "shock.effect.decay", main = "Y in Differences")
 dev.off()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
