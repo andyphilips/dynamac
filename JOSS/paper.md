@@ -40,7 +40,7 @@ This functionality simplifies the production and interpretation of dynamic model
 # Plotting functionality
 dynamac implements six new visualizations. These can be presented one at a time using the command `dynardl.simulation.plot()`, or all six using `dynardl.all.plots()`. The resulting plots are:
 
-* The response path of the level of the dependent variable, given a change (a "shock", such as a one standard deviation increase or decrease) in a single independent variable at one point in time [@williams2012but].
+* The response path of the level of the dependent variable, given a change (a "shock", such as a one standard deviation increase or decrease) in a single independent variable at one point in time.
 * Deviations between the predicted and average values of $y_t$: $\hat{y}_t - \bar{y}$. While this plot follows a response path identical to the plot above, if a shock dissipates and the series reverts to its mean, this is easier to observe if we do not have to subtract the stable starting value from the plot. If the series reverts to a value other than its mean, we would be especially interested in this new long-run mean in response to the shock. This is analogous to an impulse response function.
 * The period-to-period response in $y_t$ by differencing the response path. This allows us to visualize successive movements over time.
 * The size of the shock itself over time. This allows us to visualize dynamic persistence, so we can make statements like "how many time points until the shock is at 50 percent of its original magnitude?" or "how many time points until the shock is effectively zero?" This information is poorly represented by either the short-run or long-run effects as traditionally calculated.
